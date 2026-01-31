@@ -1,0 +1,243 @@
+﻿
+> ace-website@0.1.0 build
+> next build
+
+node.exe : ΓÜá 
+Warning: Next.js 
+inferred your 
+workspace root, but 
+it may not be 
+correct.
+At line:1 char:1
++ & "C:\Program File
+s\nodejs/node.exe" 
+"C:\Program Files\no
+dejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~
+    + CategoryInfo  
+            : NotS  
+  pecified: (ΓÜá    
+ Warning: Ne...n    
+ot be correct.:    
+String) [], Rem    
+oteException
+    + FullyQualifie 
+   dErrorId : Nati  
+  veCommandError
+ 
+ We detected 
+multiple lockfiles 
+and selected the 
+directory of C:\User
+s\lev52\package-lock
+.json as the root 
+directory.
+ To silence this 
+warning, set 
+`turbopack.root` in 
+your Next.js 
+config, or consider 
+removing one of the 
+lockfiles if it's 
+not needed.
+   See https://nextj
+s.org/docs/app/api-r
+eference/config/next
+-config-js/turbopack
+#root-directory for 
+more information.
+ Detected 
+additional 
+lockfiles: 
+   * C:\Users\lev52\
+Desktop\ace-website\
+package-lock.json
+
+Γû▓ Next.js 16.1.6 (Turbopack)
+- Environments: .env.local, .env
+
+ΓÜá The 
+"middleware" file 
+convention is 
+deprecated. Please 
+use "proxy" 
+instead. Learn 
+more: https://nextjs
+.org/docs/messages/m
+iddleware-to-proxy
+  Creating an optimized production build ...
+
+> Build error 
+occurred
+Error: Turbopack 
+build failed with 1 
+errors:
+./Desktop/ace-websit
+e/src/lib/supabase/s
+erver.ts:2:1
+Ecmascript file had 
+an error
+[0m [90m 1 |[39m 
+[36mimport[39m { 
+createServerClient 
+} [36mfrom[39m [3
+2m'@supabase/ssr'[3
+9m
+[31m[1m>[22m[39m
+[90m 2 |[39m 
+[36mimport[39m { 
+cookies } 
+[36mfrom[39m [32m
+'next/headers'[39m
+ [90m   |[39m [31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m[31
+m[1m^[22m[39m
+ [90m 3 |[39m
+ [90m 4 |[39m 
+[36mexport[39m 
+[36masync[39m 
+[36mfunction[39m 
+createClient() {
+ [90m 5 |[39m     
+[36mconst[39m 
+cookieStore 
+[33m=[39m 
+[36mawait[39m 
+cookies()[0m
+
+You're importing a 
+component that 
+needs 
+"next/headers". 
+That only works in 
+a Server Component 
+which is not 
+supported in the 
+pages/ directory. 
+Read more: https://n
+extjs.org/docs/app/b
+uilding-your-applica
+tion/rendering/serve
+r-components
+
+
+
+Import traces:
+  #1 [App Route]:
+    ./Desktop/ace-we
+bsite/src/lib/supaba
+se/server.ts
+    ./Desktop/ace-we
+bsite/src/app/auth/c
+allback/route.ts
+
+  #2 [Server 
+Component]:
+    ./Desktop/ace-we
+bsite/src/lib/supaba
+se/server.ts
+    ./Desktop/ace-we
+bsite/src/lib/action
+s/auth.ts
+
+  #3 [Server 
+Component]:
+    ./Desktop/ace-we
+bsite/src/lib/supaba
+se/server.ts
+    ./Desktop/ace-we
+bsite/src/components
+/layout/navbar-with-
+auth.tsx
+    ./Desktop/ace-we
+bsite/src/app/about/
+page.tsx
+
+  #4 [Client 
+Component Browser]:
+    ./Desktop/ace-we
+bsite/src/lib/supaba
+se/server.ts 
+[Client Component 
+Browser]
+    ./Desktop/ace-we
+bsite/src/components
+/layout/navbar-with-
+auth.tsx [Client 
+Component Browser]
+    ./Desktop/ace-we
+bsite/src/app/dashbo
+ard/submit/page.tsx 
+[Client Component 
+Browser]
+    ./Desktop/ace-we
+bsite/src/app/dashbo
+ard/submit/page.tsx 
+[Server Component]
+
+  #5 [Client 
+Component SSR]:
+    ./Desktop/ace-we
+bsite/src/lib/supaba
+se/server.ts 
+[Client Component 
+SSR]
+    ./Desktop/ace-we
+bsite/src/components
+/layout/navbar-with-
+auth.tsx [Client 
+Component SSR]
+    ./Desktop/ace-we
+bsite/src/app/dashbo
+ard/submit/page.tsx 
+[Client Component 
+SSR]
+    ./Desktop/ace-we
+bsite/src/app/dashbo
+ard/submit/page.tsx 
+[Server Component]
+
+
+    at <unknown> (./
+Desktop/ace-website/
+src/lib/supabase/ser
+ver.ts:2:1)
