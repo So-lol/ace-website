@@ -2,7 +2,7 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
 }
 
 datasource db {
@@ -52,13 +52,13 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relations
-  mentorPairings    Pairing[]          @relation("MentorPairings")
-  menteePairings    PairingMentee[]
-  submissions       Submission[]       @relation("Submitter")
-  reviewedSubmissions Submission[]     @relation("Reviewer")
-  announcements     Announcement[]
-  auditLogs         AuditLog[]
-  pointsAdjustments PointsAdjustment[]
+  mentorPairings      Pairing[]          @relation("MentorPairings")
+  menteePairings      PairingMentee[]
+  submissions         Submission[]       @relation("Submitter")
+  reviewedSubmissions Submission[]       @relation("Reviewer")
+  announcements       Announcement[]
+  auditLogs           AuditLog[]
+  pointsAdjustments   PointsAdjustment[]
 
   @@index([familyId])
   @@index([role])
@@ -69,9 +69,9 @@ model User {
 // =====================
 
 model Family {
-  id         String   @id @default(cuid())
-  name       String   @unique
-  isArchived Boolean  @default(false)
+  id         String  @id @default(cuid())
+  name       String  @unique
+  isArchived Boolean @default(false)
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -89,8 +89,8 @@ model Family {
 // =====================
 
 model Pairing {
-  id       String @id @default(cuid())
-  
+  id String @id @default(cuid())
+
   // Family relation
   familyId String
   family   Family @relation(fields: [familyId], references: [id])
@@ -212,11 +212,11 @@ model BonusActivity {
 
 // Junction table for Submission <-> BonusActivity
 model SubmissionBonus {
-  id             String        @id @default(cuid())
-  submissionId   String
-  submission     Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  id              String        @id @default(cuid())
+  submissionId    String
+  submission      Submission    @relation(fields: [submissionId], references: [id], onDelete: Cascade)
   bonusActivityId String
-  bonusActivity  BonusActivity @relation(fields: [bonusActivityId], references: [id])
+  bonusActivity   BonusActivity @relation(fields: [bonusActivityId], references: [id])
 
   // Points awarded for this bonus
   pointsAwarded Int

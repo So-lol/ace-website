@@ -1,10 +1,9 @@
-import { createClient } from '@/lib/supabase/server'
+import { getAuthenticatedUser } from '@/lib/auth-helpers'
 import { prisma } from '@/lib/prisma'
 import { Navbar } from './navbar'
 
 export async function NavbarWithAuth() {
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const authUser = await getAuthenticatedUser()
 
     let user = null
 

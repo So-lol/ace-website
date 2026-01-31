@@ -1,24 +1,16 @@
-import { createClient } from '@/lib/supabase/server'
+import { getAuthenticatedUser } from '@/lib/auth-helpers'
 import { prisma } from '@/lib/prisma'
 import { UserRole } from '@prisma/client'
 
-export async function getSession() {
-    const supabase = await createClient()
-    const { data: { session }, error } = await supabase.auth.getSession()
-
-    if (error) {
-        console.error('Error getting session:', error)
-        return null
-    }
-
-    return session
-}
+/**
+ * @deprecated Use getAuthenticatedUser from @/lib/auth-helpers for server actions
+ * This file provides backward compatibility for page components
+ */
 
 export async function getCurrentUser() {
-    const supabase = await createClient()
-    const { data: { user: authUser }, error } = await supabase.auth.getUser()
+    const authUser = await getAuthenticatedUser()
 
-    if (error || !authUser) {
+    if (!authUser) {
         return null
     }
 
@@ -68,18 +60,4 @@ export async function isMentee() {
     return user?.role === UserRole.MENTEE
 }
 
-export async function requireAuth() {
-    const user = await getCurrentUser()
-    if (!user) {
-        throw new Error('Unauthorized')
-    }
-    return user
-}
-
-export async function requireAdmin() {
-    const user = await getCurrentUser()
-    if (!user || user.role !== UserRole.ADMIN) {
-        throw new Error('Forbidden: Admin access required')
-    }
-    return user
-}
+export { getAuthenticatedUser as getSession }

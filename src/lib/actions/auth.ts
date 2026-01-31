@@ -1,19 +1,24 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
+import { createUser, verifyIdToken, deleteUser } from '@/lib/firebase-admin'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
+import { cookies } from 'next/headers'
 
 export type AuthResult = {
     success: boolean
     error?: string
     redirectTo?: string
+    needsClientAuth?: boolean
 }
 
+/**
+ * Sign up a new user
+ * Note: Firebase Auth user creation happens on the client side for email/password
+ * This server action creates the user in our database after Firebase auth succeeds
+ */
 export async function signUp(formData: FormData): Promise<AuthResult> {
-    const supabase = await createClient()
-
     const email = formData.get('email') as string
     const password = formData.get('password') as string
     const confirmPassword = formData.get('confirmPassword') as string
@@ -41,32 +46,24 @@ export async function signUp(formData: FormData): Promise<AuthResult> {
         return { success: false, error: 'An account with this email already exists' }
     }
 
-    // Create user in Supabase Auth
-    const { data, error } = await supabase.auth.signUp({
-        email: email.toLowerCase(),
+    // Create user in Firebase Auth using Admin SDK
+    const { user: firebaseUser, error: firebaseError } = await createUser(
+        email.toLowerCase(),
         password,
-        options: {
-            data: {
-                name,
-            },
-            emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
-        },
-    })
+        name
+    )
 
-    if (error) {
-        console.error('Supabase signup error:', error)
-        return { success: false, error: error.message }
-    }
-
-    if (!data.user) {
-        return { success: false, error: 'Failed to create account' }
+    if (firebaseError || !firebaseUser) {
+        console.error('Firebase signup error:', firebaseError)
+        const errorMessage = firebaseError instanceof Error ? firebaseError.message : 'Failed to create account'
+        return { success: false, error: errorMessage }
     }
 
     // Create user in our database
     try {
         await prisma.user.create({
             data: {
-                id: data.user.id,
+                id: firebaseUser.uid,
                 email: email.toLowerCase(),
                 name,
                 role: 'MENTEE', // Default role, admin can change later
@@ -74,108 +71,110 @@ export async function signUp(formData: FormData): Promise<AuthResult> {
         })
     } catch (dbError) {
         console.error('Database user creation error:', dbError)
-        // If database creation fails, we should ideally clean up the Supabase user
-        // For now, we'll just return an error
+        // Clean up Firebase user if database creation fails
+        await deleteUser(firebaseUser.uid)
         return { success: false, error: 'Failed to create user profile' }
     }
 
-    // Check if email confirmation is required
-    if (data.user.identities?.length === 0) {
-        return {
-            success: true,
-            redirectTo: '/login?message=check-email'
-        }
-    }
-
     revalidatePath('/', 'layout')
-    return { success: true, redirectTo: '/dashboard' }
+    // User needs to sign in on the client side after signup
+    return {
+        success: true,
+        redirectTo: '/login?message=account-created',
+        needsClientAuth: true
+    }
 }
 
-export async function signIn(formData: FormData): Promise<AuthResult> {
-    const supabase = await createClient()
+/**
+ * Verify user session and sync with database
+ * Called after client-side Firebase sign in
+ */
+export async function verifyAndSyncUser(idToken: string): Promise<AuthResult> {
+    const { user: firebaseUser, error } = await verifyIdToken(idToken)
 
-    const email = formData.get('email') as string
-    const password = formData.get('password') as string
-    const redirectPath = formData.get('redirect') as string | null
-
-    // Validation
-    if (!email || !password) {
-        return { success: false, error: 'Email and password are required' }
-    }
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.toLowerCase(),
-        password,
-    })
-
-    if (error) {
-        console.error('Supabase signin error:', error)
-        if (error.message.includes('Invalid login credentials')) {
-            return { success: false, error: 'Invalid email or password' }
-        }
-        return { success: false, error: error.message }
-    }
-
-    if (!data.user) {
-        return { success: false, error: 'Failed to sign in' }
+    if (error || !firebaseUser) {
+        return { success: false, error: 'Invalid session' }
     }
 
     // Ensure user exists in our database
-    const dbUser = await prisma.user.findUnique({
-        where: { email: email.toLowerCase() }
+    let dbUser = await prisma.user.findUnique({
+        where: { email: firebaseUser.email! }
     })
 
     if (!dbUser) {
-        // Create user in database if they exist in Supabase but not in our DB
-        // This handles cases where users were created directly in Supabase
-        await prisma.user.create({
+        // Create user in database if they exist in Firebase but not in our DB
+        dbUser = await prisma.user.create({
             data: {
-                id: data.user.id,
-                email: email.toLowerCase(),
-                name: data.user.user_metadata?.name || email.split('@')[0],
+                id: firebaseUser.uid,
+                email: firebaseUser.email!.toLowerCase(),
+                name: firebaseUser.name || firebaseUser.email!.split('@')[0],
                 role: 'MENTEE',
             },
         })
     }
 
+    // Set session cookie
+    const cookieStore = await cookies()
+    cookieStore.set('firebase-session', idToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24 * 7, // 1 week
+        path: '/',
+    })
+
     revalidatePath('/', 'layout')
-    return { success: true, redirectTo: redirectPath || '/dashboard' }
+    return { success: true, redirectTo: '/dashboard' }
 }
 
+/**
+ * Sign out user
+ * Clears the session cookie (client handles Firebase signOut)
+ */
 export async function signOut(): Promise<void> {
-    const supabase = await createClient()
-    await supabase.auth.signOut()
+    const cookieStore = await cookies()
+    cookieStore.delete('firebase-session')
     revalidatePath('/', 'layout')
     redirect('/')
 }
 
+/**
+ * Request password reset email
+ * Note: This needs to be done on the client side with Firebase Auth
+ */
 export async function resetPassword(formData: FormData): Promise<AuthResult> {
-    const supabase = await createClient()
-
     const email = formData.get('email') as string
 
     if (!email) {
         return { success: false, error: 'Email is required' }
     }
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email.toLowerCase(), {
-        redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/reset-password`,
+    // Check if user exists
+    const user = await prisma.user.findUnique({
+        where: { email: email.toLowerCase() }
     })
 
-    if (error) {
-        console.error('Password reset error:', error)
-        return { success: false, error: error.message }
+    if (!user) {
+        // Don't reveal whether email exists
+        return {
+            success: true,
+            redirectTo: '/login?message=reset-email-sent'
+        }
     }
 
+    // Password reset is handled on the client side with Firebase Auth
     return {
         success: true,
+        needsClientAuth: true,
         redirectTo: '/login?message=reset-email-sent'
     }
 }
 
+/**
+ * Update password
+ * Note: This needs to be done on the client side with Firebase Auth
+ */
 export async function updatePassword(formData: FormData): Promise<AuthResult> {
-    const supabase = await createClient()
-
     const password = formData.get('password') as string
     const confirmPassword = formData.get('confirmPassword') as string
 
@@ -191,15 +190,33 @@ export async function updatePassword(formData: FormData): Promise<AuthResult> {
         return { success: false, error: 'Password must be at least 8 characters' }
     }
 
-    const { error } = await supabase.auth.updateUser({
-        password,
-    })
+    // Password update is handled on the client side with Firebase Auth
+    return {
+        success: true,
+        needsClientAuth: true,
+        redirectTo: '/dashboard?message=password-updated'
+    }
+}
 
-    if (error) {
-        console.error('Password update error:', error)
-        return { success: false, error: error.message }
+/**
+ * Get current authenticated user from ID token
+ */
+export async function getCurrentUser(idToken: string) {
+    const { user: firebaseUser, error } = await verifyIdToken(idToken)
+
+    if (error || !firebaseUser) {
+        return null
     }
 
-    revalidatePath('/', 'layout')
-    return { success: true, redirectTo: '/dashboard?message=password-updated' }
+    const dbUser = await prisma.user.findUnique({
+        where: { email: firebaseUser.email! },
+        select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+        }
+    })
+
+    return dbUser
 }

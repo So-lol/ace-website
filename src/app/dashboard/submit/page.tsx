@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useDropzone } from 'react-dropzone'
 import { NavbarWithAuthClient, Footer } from '@/components/layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -17,8 +18,10 @@ import {
     CheckCircle2,
     AlertCircle
 } from 'lucide-react'
+import { uploadSubmissionImage, createSubmission, deleteUploadedImage } from '@/lib/actions/submissions'
+import { toast } from 'sonner'
 
-// Mock data
+// Mock data - TODO: fetch from server
 const currentWeek = {
     weekNumber: 5,
     year: 2026,
@@ -33,6 +36,7 @@ const bonusActivities = [
 const hasExistingSubmission = false
 
 export default function SubmitPage() {
+    const router = useRouter()
     const [file, setFile] = useState<File | null>(null)
     const [preview, setPreview] = useState<string | null>(null)
     const [selectedBonuses, setSelectedBonuses] = useState<string[]>([])
@@ -80,11 +84,45 @@ export default function SubmitPage() {
         if (!file) return
 
         setIsSubmitting(true)
-        // TODO: Implement actual submission
-        setTimeout(() => {
+
+        try {
+            // Step 1: Upload image to Supabase Storage
+            const uploadFormData = new FormData()
+            uploadFormData.append('file', file)
+
+            const uploadResult = await uploadSubmissionImage(uploadFormData)
+            if (!uploadResult.success || !uploadResult.imageUrl || !uploadResult.imagePath) {
+                toast.error(uploadResult.error || 'Failed to upload image')
+                setIsSubmitting(false)
+                return
+            }
+
+            // Step 2: Create submission record
+            const submissionResult = await createSubmission(
+                uploadResult.imageUrl,
+                uploadResult.imagePath,
+                currentWeek.weekNumber,
+                currentWeek.year,
+                selectedBonuses
+            )
+
+            if (!submissionResult.success) {
+                // Clean up uploaded image on failure
+                await deleteUploadedImage(uploadResult.imagePath)
+                toast.error(submissionResult.error || 'Failed to create submission')
+                setIsSubmitting(false)
+                return
+            }
+
+            toast.success('Photo submitted successfully!')
+            router.push('/dashboard/submissions')
+            router.refresh()
+        } catch (error) {
+            console.error('Submission error:', error)
+            toast.error('An unexpected error occurred. Please try again.')
+        } finally {
             setIsSubmitting(false)
-            // Redirect to success or dashboard
-        }, 2000)
+        }
     }
 
     const basePoints = 10

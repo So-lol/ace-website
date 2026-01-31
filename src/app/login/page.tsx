@@ -9,7 +9,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Cat, ArrowLeft, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
-import { signIn } from '@/lib/actions/auth'
+import { verifyAndSyncUser } from '@/lib/actions/auth'
+import { auth } from '@/lib/firebase'
+import { signInWithEmailAndPassword } from 'firebase/auth'
 import { toast } from 'sonner'
 
 function LoginForm() {
@@ -20,25 +22,45 @@ function LoginForm() {
     const message = searchParams.get('message')
     const error = searchParams.get('error')
 
-    async function handleSubmit(formData: FormData) {
+    async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+        e.preventDefault()
         setIsLoading(true)
 
-        if (redirectPath) {
-            formData.append('redirect', redirectPath)
+        const formData = new FormData(e.currentTarget)
+        const email = formData.get('email') as string
+        const password = formData.get('password') as string
+
+        if (!email || !password) {
+            toast.error('Email and password are required')
+            setIsLoading(false)
+            return
         }
 
         try {
-            const result = await signIn(formData)
+            // Sign in with Firebase client SDK
+            const userCredential = await signInWithEmailAndPassword(auth, email.toLowerCase(), password)
+            const idToken = await userCredential.user.getIdToken()
+
+            // Sync with our database and set session cookie
+            const result = await verifyAndSyncUser(idToken)
 
             if (result.success) {
                 toast.success('Signed in successfully!')
-                router.push(result.redirectTo || '/dashboard')
+                router.push(redirectPath || result.redirectTo || '/dashboard')
                 router.refresh()
             } else {
                 toast.error(result.error || 'Failed to sign in')
             }
-        } catch (err) {
-            toast.error('An unexpected error occurred')
+        } catch (err: unknown) {
+            console.error('Sign in error:', err)
+            const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred'
+            if (errorMessage.includes('auth/invalid-credential') || errorMessage.includes('auth/user-not-found') || errorMessage.includes('auth/wrong-password')) {
+                toast.error('Invalid email or password')
+            } else if (errorMessage.includes('auth/too-many-requests')) {
+                toast.error('Too many failed attempts. Please try again later.')
+            } else {
+                toast.error('Failed to sign in. Please try again.')
+            }
         } finally {
             setIsLoading(false)
         }
@@ -75,6 +97,16 @@ function LoginForm() {
                         </div>
                     )}
 
+                    {message === 'account-created' && (
+                        <div className="mb-6 p-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg flex gap-3">
+                            <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
+                            <div className="text-sm text-green-800 dark:text-green-200">
+                                <p className="font-medium">Account created!</p>
+                                <p>You can now sign in with your email and password.</p>
+                            </div>
+                        </div>
+                    )}
+
                     {message === 'reset-email-sent' && (
                         <div className="mb-6 p-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg flex gap-3">
                             <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
@@ -104,7 +136,7 @@ function LoginForm() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <form action={handleSubmit} className="space-y-4">
+                            <form onSubmit={handleSubmit} className="space-y-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="email">Email</Label>
                                     <Input
@@ -157,15 +189,19 @@ function LoginForm() {
 
                             <p className="text-center text-sm text-muted-foreground mt-6">
                                 Don&apos;t have an account?{' '}
-                                <Link href="/signup" className="text-primary font-medium hover:underline">
+                                <Link href="/signup" className="text-primary hover:underline font-medium">
                                     Sign up
                                 </Link>
                             </p>
                         </CardContent>
                     </Card>
 
-                    <div className="text-center mt-6">
-                        <Link href="/" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+                    {/* Back to home */}
+                    <div className="mt-6 text-center">
+                        <Link
+                            href="/"
+                            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                        >
                             <ArrowLeft className="w-4 h-4" />
                             Back to home
                         </Link>
@@ -181,16 +217,11 @@ function LoginForm() {
 export default function LoginPage() {
     return (
         <Suspense fallback={
-            <div className="min-h-screen flex flex-col">
-                <Navbar />
-                <main className="flex-1 flex items-center justify-center">
-                    <div className="animate-pulse">Loading...</div>
-                </main>
-                <Footer />
+            <div className="min-h-screen flex items-center justify-center">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>
         }>
             <LoginForm />
         </Suspense>
     )
 }
-

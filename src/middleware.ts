@@ -1,11 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server'
-import { updateSession } from '@/lib/supabase/middleware'
-import { prisma } from '@/lib/prisma'
-import { UserRole } from '@prisma/client'
+import { cookies } from 'next/headers'
 
 export async function middleware(request: NextRequest) {
-    const { supabaseResponse, user } = await updateSession(request)
-
     const { pathname } = request.nextUrl
 
     // Public routes - allow everyone
@@ -15,34 +11,37 @@ export async function middleware(request: NextRequest) {
     )
 
     if (isPublicRoute) {
-        return supabaseResponse
+        return NextResponse.next()
     }
 
-    // Protected routes - require authentication
-    if (!user) {
+    // Check for Firebase ID token in cookies or Authorization header
+    const authHeader = request.headers.get('Authorization')
+    const idToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+
+    // For browser requests, check cookies for session
+    const cookieStore = await cookies()
+    const sessionCookie = cookieStore.get('firebase-session')?.value
+
+    const token = idToken || sessionCookie
+
+    if (!token) {
+        // For API routes, return 401
+        if (pathname.startsWith('/api/')) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        }
+        // For page routes, redirect to login
         const loginUrl = new URL('/login', request.url)
         loginUrl.searchParams.set('redirect', pathname)
         return NextResponse.redirect(loginUrl)
     }
 
-    // Admin routes - require admin role
-    if (pathname.startsWith('/admin')) {
-        try {
-            const dbUser = await prisma.user.findUnique({
-                where: { email: user.email! },
-                select: { role: true }
-            })
+    // Note: Full token verification happens in API routes using firebase-admin
+    // Middleware just checks for token presence for performance
 
-            if (!dbUser || dbUser.role !== UserRole.ADMIN) {
-                return NextResponse.redirect(new URL('/dashboard', request.url))
-            }
-        } catch (error) {
-            console.error('Error checking admin role:', error)
-            return NextResponse.redirect(new URL('/dashboard', request.url))
-        }
-    }
+    // Admin routes require additional check in the page/API itself
+    // since we can't use firebase-admin in Edge runtime
 
-    return supabaseResponse
+    return NextResponse.next()
 }
 
 export const config = {
