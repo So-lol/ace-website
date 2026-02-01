@@ -235,14 +235,16 @@ export async function approveSubmission(submissionId: string): Promise<Submissio
             })
 
             // Audit Log
-            const auditRef = adminDb.collection('auditLogs').doc()
+            const auditRef = adminDb.collection('audit_logs').doc()
             transaction.set(auditRef, {
                 action: 'APPROVE',
-                entityType: 'Submission',
-                entityId: submissionId,
+                targetType: 'SUBMISSION',
+                targetId: submissionId,
                 actorId: adminUser.id,
-                afterValue: { status: 'APPROVED', points: submissionData.totalPoints },
-                createdAt: Timestamp.now(),
+                actorEmail: adminUser.email,
+                details: 'Approved submission',
+                metadata: { status: 'APPROVED', points: submissionData.totalPoints },
+                timestamp: Timestamp.now(),
             })
         })
 
@@ -299,14 +301,16 @@ export async function rejectSubmission(submissionId: string, reason: string): Pr
             })
 
             // Audit log
-            const auditRef = adminDb.collection('auditLogs').doc()
+            const auditRef = adminDb.collection('audit_logs').doc()
             transaction.set(auditRef, {
                 action: 'REJECT',
-                entityType: 'Submission',
-                entityId: submissionId,
+                targetType: 'SUBMISSION',
+                targetId: submissionId,
                 actorId: adminUser.id,
-                afterValue: { status: 'REJECTED', reason: reason.trim() },
-                createdAt: Timestamp.now(),
+                actorEmail: adminUser.email,
+                details: `Rejected submission: ${reason.trim()}`,
+                metadata: { status: 'REJECTED', reason: reason.trim() },
+                timestamp: Timestamp.now(),
             })
         })
 

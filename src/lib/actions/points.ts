@@ -5,6 +5,7 @@ import { getAuthenticatedUser, requireAdmin } from '@/lib/auth-helpers'
 import { revalidatePath } from 'next/cache'
 import { FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { AuditLogDoc } from '@/types/firestore'
+import { logAuditAction } from '@/lib/actions/audit'
 
 interface AdjustPointsInput {
     pairingId: string
@@ -47,21 +48,21 @@ export async function adjustPairingPoints(input: AdjustPointsInput) {
         })
 
         // Create audit log entry
-        await adminDb.collection('auditLogs').add({
-            action: input.amount > 0 ? 'POINTS_ADDED' : 'POINTS_DEDUCTED',
-            targetType: 'pairing',
-            targetId: input.pairingId,
-            actorId: user.id,
-            details: input.reason.trim(),
-            timestamp: FieldValue.serverTimestamp(),
-            metadata: {
+        // Create audit log entry using shared action
+        await logAuditAction(
+            user.id,
+            input.amount > 0 ? 'POINTS_ADDED' : 'POINTS_DEDUCTED',
+            'pairing',
+            input.pairingId,
+            input.reason.trim(),
+            {
                 previousPoints: currentPoints,
                 adjustment: input.amount,
                 newPoints: newPoints,
-                actorName: user.name,
-                actorEmail: user.email
-            }
-        })
+                actorName: user.name
+            },
+            user.email
+        )
 
         revalidatePath('/admin/points')
         revalidatePath('/admin')
@@ -85,13 +86,13 @@ export async function getPointsHistory(pairingId?: string, limit: number = 50) {
     try {
         await requireAdmin()
 
-        let query = adminDb.collection('auditLogs')
+        let query = adminDb.collection('audit_logs')
             .where('targetType', '==', 'pairing')
             .orderBy('timestamp', 'desc')
             .limit(limit)
 
         if (pairingId) {
-            query = adminDb.collection('auditLogs')
+            query = adminDb.collection('audit_logs')
                 .where('targetType', '==', 'pairing')
                 .where('targetId', '==', pairingId)
                 .orderBy('timestamp', 'desc')

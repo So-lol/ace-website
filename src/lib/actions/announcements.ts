@@ -4,6 +4,8 @@ import { adminDb } from '@/lib/firebase-admin'
 import { AnnouncementDoc } from '@/types/firestore'
 import { Timestamp } from 'firebase-admin/firestore'
 import { revalidatePath } from 'next/cache'
+import { logAuditAction } from '@/lib/actions/audit'
+import { getAuthenticatedUser } from '@/lib/auth-helpers'
 
 export async function getAnnouncements(publishedOnly = false) {
     try {
@@ -53,6 +55,18 @@ export async function createAnnouncement(data: { title: string; content: string;
         revalidatePath('/admin/announcements')
         revalidatePath('/announcements')
         revalidatePath('/')
+
+        const user = await getAuthenticatedUser()
+        await logAuditAction(
+            data.authorId,
+            'CREATE',
+            'ANNOUNCEMENT',
+            docRef.id,
+            `Created announcement: ${data.title}`,
+            undefined,
+            user?.email
+        )
+
         return { success: true, id: docRef.id }
     } catch (error) {
         console.error('Error creating announcement:', error)
@@ -89,6 +103,21 @@ export async function updateAnnouncement(id: string, data: Omit<Partial<Announce
         revalidatePath('/admin/announcements')
         revalidatePath('/announcements')
         revalidatePath('/')
+        revalidatePath('/')
+
+        const user = await getAuthenticatedUser()
+        if (user) {
+            await logAuditAction(
+                user.id,
+                'UPDATE',
+                'ANNOUNCEMENT',
+                id,
+                `Updated announcement`,
+                undefined,
+                user.email
+            )
+        }
+
         return { success: true }
     } catch (error) {
         console.error('Error updating announcement:', error)
@@ -103,6 +132,21 @@ export async function deleteAnnouncement(id: string) {
         revalidatePath('/admin/announcements')
         revalidatePath('/announcements')
         revalidatePath('/')
+        revalidatePath('/')
+
+        const user = await getAuthenticatedUser()
+        if (user) {
+            await logAuditAction(
+                user.id,
+                'DELETE',
+                'ANNOUNCEMENT',
+                id,
+                `Deleted announcement`,
+                undefined,
+                user.email
+            )
+        }
+
         return { success: true }
     } catch (error) {
         console.error('Error deleting announcement:', error)

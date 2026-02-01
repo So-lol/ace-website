@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { Timestamp, FieldValue } from 'firebase-admin/firestore'
 import { PairingDoc, UserDoc, FamilyDoc, SubmissionDoc } from '@/types/firestore' // Raw types
 import { User, Family, Submission } from '@/types/index' // Client types
+import { logAuditAction } from '@/lib/actions/audit'
 
 export type PairingResult = {
     success: boolean
@@ -197,14 +198,15 @@ export async function createPairing(
             updatedAt: Timestamp.now()
         })
 
-        await adminDb.collection('auditLogs').add({
-            action: 'CREATE',
-            entityType: 'Pairing',
-            entityId: pairingRef.id,
-            actorId: adminUser.id,
-            afterValue: { familyId, mentorId, menteeIds },
-            createdAt: Timestamp.now(),
-        })
+        await logAuditAction(
+            adminUser.id,
+            'CREATE',
+            'PAIRING',
+            pairingRef.id,
+            'Created pairing',
+            { familyId, mentorId, menteeIds },
+            adminUser.email
+        )
 
         revalidatePath('/admin/pairings')
         revalidatePath('/admin/families')
@@ -227,13 +229,15 @@ export async function deletePairing(pairingId: string): Promise<PairingResult> {
     try {
         await adminDb.collection('pairings').doc(pairingId).delete()
 
-        await adminDb.collection('auditLogs').add({
-            action: 'DELETE',
-            entityType: 'Pairing',
-            entityId: pairingId,
-            actorId: adminUser.id,
-            createdAt: Timestamp.now(),
-        })
+        await logAuditAction(
+            adminUser.id,
+            'DELETE',
+            'PAIRING',
+            pairingId,
+            'Deleted pairing',
+            undefined,
+            adminUser.email
+        )
 
         revalidatePath('/admin/pairings')
         return { success: true, pairingId }
@@ -410,14 +414,16 @@ export async function updatePairing(
         }
 
         // Log audit
-        await adminDb.collection('auditLogs').add({
-            action: 'UPDATE',
-            entityType: 'Pairing',
-            entityId: pairingId,
-            actorId: adminUser.id,
-            afterValue: updates,
-            createdAt: Timestamp.now(),
-        })
+        // Log audit
+        await logAuditAction(
+            adminUser.id,
+            'UPDATE',
+            'PAIRING',
+            pairingId,
+            'Updated pairing',
+            updates,
+            adminUser.email
+        )
 
         revalidatePath('/admin/pairings')
         revalidatePath('/admin/families')

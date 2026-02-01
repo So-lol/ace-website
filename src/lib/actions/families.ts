@@ -5,6 +5,7 @@ import { requireAdmin } from '@/lib/auth-helpers'
 import { revalidatePath } from 'next/cache'
 import { Timestamp } from 'firebase-admin/firestore'
 import { FamilyDoc } from '@/types/firestore'
+import { logAuditAction } from '@/lib/actions/audit'
 
 /**
  * Get all families (admin)
@@ -105,7 +106,7 @@ export async function getFamilies(includeArchived = false) {
  */
 export async function createFamily(data: { name: string }) {
     try {
-        await requireAdmin()
+        const admin = await requireAdmin()
 
         const newFamily: Omit<FamilyDoc, 'id'> = {
             name: data.name,
@@ -119,6 +120,18 @@ export async function createFamily(data: { name: string }) {
         revalidatePath('/admin/families')
         revalidatePath('/leaderboard')
 
+        revalidatePath('/leaderboard')
+
+        await logAuditAction(
+            admin.id,
+            'CREATE',
+            'FAMILY',
+            ref.id,
+            `Created family ${data.name}`,
+            undefined,
+            admin.email
+        )
+
         return { success: true, familyId: ref.id }
     } catch (error: any) {
         console.error('Error creating family:', error)
@@ -131,7 +144,7 @@ export async function createFamily(data: { name: string }) {
  */
 export async function updateFamily(familyId: string, data: Partial<FamilyDoc>) {
     try {
-        await requireAdmin()
+        const admin = await requireAdmin()
 
         const updates: any = {
             ...data,
@@ -148,6 +161,16 @@ export async function updateFamily(familyId: string, data: Partial<FamilyDoc>) {
         revalidatePath('/admin/families')
         revalidatePath('/leaderboard')
 
+        await logAuditAction(
+            admin.id,
+            'UPDATE',
+            'FAMILY',
+            familyId,
+            `Updated family`,
+            undefined,
+            admin.email
+        )
+
         return { success: true }
     } catch (error: any) {
         console.error('Error updating family:', error)
@@ -160,7 +183,7 @@ export async function updateFamily(familyId: string, data: Partial<FamilyDoc>) {
  */
 export async function deleteFamily(familyId: string) {
     try {
-        await requireAdmin()
+        const admin = await requireAdmin()
 
         // Check if family has members or pairings before deleting?
         // For now, allow deletion (soft delete via archive preferred)
@@ -168,6 +191,16 @@ export async function deleteFamily(familyId: string) {
 
         revalidatePath('/admin/families')
         revalidatePath('/leaderboard')
+
+        await logAuditAction(
+            admin.id,
+            'DELETE',
+            'FAMILY',
+            familyId,
+            `Deleted family`,
+            undefined,
+            admin.email
+        )
 
         return { success: true }
     } catch (error: any) {

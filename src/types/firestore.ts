@@ -104,6 +104,7 @@ export interface AuditLogDoc {
     targetType: string
     targetId: string
     actorId: string
+    actorEmail?: string
     details: string
     timestamp: Timestamp
     metadata?: Record<string, any>

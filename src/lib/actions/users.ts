@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/auth-helpers'
 import { adminDb, deleteFirebaseUser, createFirebaseUser } from '@/lib/firebase-admin'
 import { revalidatePath } from 'next/cache'
 import { UserDoc, FamilyDoc } from '@/types/firestore'
+import { logAuditAction } from '@/lib/actions/audit'
 import { UserWithFamily, UserRole, Family } from '@/types/index'
 import { Timestamp } from 'firebase-admin/firestore'
 
@@ -20,7 +21,7 @@ interface CreateUserInput {
  */
 export async function createUser(input: CreateUserInput) {
     try {
-        await requireAdmin()
+        const admin = await requireAdmin()
 
         if (!input.name || !input.email || !input.password) {
             return { success: false, error: 'Name, email, and password are required' }
@@ -70,6 +71,18 @@ export async function createUser(input: CreateUserInput) {
         }
 
         revalidatePath('/admin/users')
+        revalidatePath('/admin/users')
+
+        await logAuditAction(
+            admin.id,
+            'CREATE',
+            'USER',
+            uid,
+            `Created user ${input.name} (${input.email})`,
+            undefined,
+            admin.email
+        )
+
         return { success: true, userId: uid }
     } catch (error: any) {
         console.error('Create user error:', error)
@@ -208,6 +221,18 @@ export async function updateUserRole(userId: string, role: UserRole) {
         })
 
         revalidatePath('/admin/users')
+        revalidatePath('/admin/users')
+
+        await logAuditAction(
+            admin.id,
+            'UPDATE_ROLE',
+            'USER',
+            userId,
+            `Updated role to ${role}`,
+            undefined,
+            admin.email
+        )
+
         return { success: true }
     } catch (error) {
         console.error('Update role error:', error)
@@ -252,6 +277,19 @@ export async function deleteUser(userId: string) {
 
         revalidatePath('/admin/users')
         revalidatePath('/admin/families')
+        revalidatePath('/admin/users')
+        revalidatePath('/admin/families')
+
+        await logAuditAction(
+            admin.id,
+            'DELETE',
+            'USER',
+            userId,
+            `Deleted user`,
+            undefined,
+            admin.email
+        )
+
         return { success: true }
     } catch (error: any) {
         console.error('Delete user error:', error)
