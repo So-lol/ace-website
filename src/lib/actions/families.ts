@@ -16,13 +16,28 @@ export async function getFamilies(includeArchived = false) {
             query = query.where('isArchived', '==', false)
         }
 
-        const snapshot = await query.get()
+        const [snapshot, pairingsSnap] = await Promise.all([
+            query.get(),
+            adminDb.collection('pairings').select('familyId', 'mentorId', 'menteeIds').get()
+        ])
+
+        // Map pairing members to families
+        const pairingMembersByFamily = new Map<string, string[]>()
+        pairingsSnap.forEach(doc => {
+            const p = doc.data()
+            if (!p.familyId) return
+            const list = pairingMembersByFamily.get(p.familyId) || []
+            if (p.mentorId) list.push(p.mentorId)
+            if (p.menteeIds && Array.isArray(p.menteeIds)) list.push(...p.menteeIds)
+            pairingMembersByFamily.set(p.familyId, list)
+        })
 
         // Collect all user IDs we need to fetch
         const userIds = new Set<string>()
         snapshot.docs.forEach(doc => {
             const data = doc.data()
             if (data.familyHeadId) userIds.add(data.familyHeadId)
+            if (data.familyHeadIds) data.familyHeadIds.forEach((id: string) => userIds.add(id))
             if (data.auntUncleIds) data.auntUncleIds.forEach((id: string) => userIds.add(id))
         })
 
@@ -48,14 +63,29 @@ export async function getFamilies(includeArchived = false) {
 
         const families = snapshot.docs.map(doc => {
             const data = doc.data()
+
+            // Handle legacy familyHeadId
+            let heads: string[] = data.familyHeadIds || []
+            if (data.familyHeadId && !heads.includes(data.familyHeadId)) {
+                heads = [data.familyHeadId, ...heads]
+            }
+
+            // Calculate members from pairings + heads + aunts
+            const pMembers = pairingMembersByFamily.get(doc.id) || []
+            const uniqueMembers = new Set([
+                ...pMembers,
+                ...heads,
+                ...(data.auntUncleIds || [])
+            ])
+
             return {
                 id: doc.id,
                 name: data.name,
                 isArchived: data.isArchived || false,
-                memberIds: data.memberIds || [],
-                memberCount: data.memberIds?.length || 0,
-                familyHeadId: data.familyHeadId || null,
-                familyHeadName: data.familyHeadId ? userMap.get(data.familyHeadId) || null : null,
+                memberIds: Array.from(uniqueMembers), // Return actual calculated list
+                memberCount: uniqueMembers.size,
+                familyHeadIds: heads,
+                familyHeadNames: heads.map(id => userMap.get(id) || 'Unknown'),
                 auntUncleIds: data.auntUncleIds || [],
                 auntUncleNames: (data.auntUncleIds || []).map((id: string) => userMap.get(id) || 'Unknown'),
                 createdAt: data.createdAt?.toDate?.() || new Date(),
@@ -103,10 +133,17 @@ export async function updateFamily(familyId: string, data: Partial<FamilyDoc>) {
     try {
         await requireAdmin()
 
-        await adminDb.collection('families').doc(familyId).update({
+        const updates: any = {
             ...data,
             updatedAt: Timestamp.now()
-        })
+        }
+
+        // Clear legacy familyHeadId if we are updating roles to prevent zombies
+        if (data.familyHeadIds) {
+            updates.familyHeadId = null
+        }
+
+        await adminDb.collection('families').doc(familyId).update(updates)
 
         revalidatePath('/admin/families')
         revalidatePath('/leaderboard')

@@ -22,7 +22,7 @@ export default async function LeaderboardPage() {
             <NavbarWithAuthClient />
 
             <main className="flex-1 py-12">
-                <LeaderboardClient families={families as (FamilyDoc & { id: string })[]} pairings={pairings} />
+                <LeaderboardClient families={families} pairings={pairings} />
             </main>
 
             <Footer />

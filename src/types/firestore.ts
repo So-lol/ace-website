@@ -28,8 +28,10 @@ export interface FamilyDoc {
     name: string
     isArchived: boolean
     memberIds: string[] // Array of User UIDs
-    familyHeadId?: string | null // User UID of family head
+    familyHeadIds?: string[] // Array of User UIDs of family heads
     auntUncleIds?: string[] // Array of User UIDs for aunts/uncles
+    weeklyPoints?: number
+    totalPoints?: number
     createdAt: Timestamp
     updatedAt: Timestamp
 }

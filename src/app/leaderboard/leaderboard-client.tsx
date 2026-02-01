@@ -6,9 +6,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Trophy, Users, Medal, Crown, Award } from 'lucide-react'
 import { FamilyDoc } from '@/types/firestore'
 
+interface LeaderboardFamily {
+    id: string
+    name: string
+    totalPoints?: number
+    memberCount?: number
+    memberIds?: string[]
+    rank?: number
+}
+
 interface LeaderboardClientProps {
-    families: (FamilyDoc & { id: string, totalPoints?: number })[]
-    pairings: any[] // Has enhanced structure
+    families: LeaderboardFamily[]
+    pairings: any[]
 }
 
 function getRankIcon(rank: number) {
@@ -91,7 +100,7 @@ export default function LeaderboardClient({ families, pairings }: LeaderboardCli
                                         <div className="flex-1">
                                             <h3 className="font-semibold text-lg">{family.name}</h3>
                                             <p className="text-sm text-muted-foreground">
-                                                {(family.memberIds || []).length} members
+                                                {family.memberCount ?? (family.memberIds?.length || 0)} members
                                             </p>
                                         </div>
                                         <div className="text-right">

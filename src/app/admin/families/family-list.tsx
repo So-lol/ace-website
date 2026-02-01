@@ -69,8 +69,8 @@ interface Family {
     isArchived: boolean
     memberIds: string[]
     memberCount: number
-    familyHeadId: string | null
-    familyHeadName: string | null
+    familyHeadIds: string[]
+    familyHeadNames: string[]
     auntUncleIds: string[]
     auntUncleNames: string[]
     createdAt: Date
@@ -90,7 +90,7 @@ export default function FamilyList({ families, users }: FamilyListProps) {
     const [isLoading, setIsLoading] = useState(false)
     const [editingFamily, setEditingFamily] = useState<Family | null>(null)
     const [name, setName] = useState('')
-    const [selectedFamilyHeadId, setSelectedFamilyHeadId] = useState<string>('none')
+    const [selectedFamilyHeadIds, setSelectedFamilyHeadIds] = useState<string[]>([])
     const [selectedAuntUncleIds, setSelectedAuntUncleIds] = useState<string[]>([])
 
     const filteredFamilies = families.filter(f =>
@@ -103,7 +103,7 @@ export default function FamilyList({ families, users }: FamilyListProps) {
     const resetForm = () => {
         setName('')
         setEditingFamily(null)
-        setSelectedFamilyHeadId('none')
+        setSelectedFamilyHeadIds([])
         setSelectedAuntUncleIds([])
     }
 
@@ -115,13 +115,23 @@ export default function FamilyList({ families, users }: FamilyListProps) {
 
     const openRolesDialog = (family: Family) => {
         setEditingFamily(family)
-        setSelectedFamilyHeadId(family.familyHeadId || 'none')
+        setSelectedFamilyHeadIds(family.familyHeadIds || [])
         setSelectedAuntUncleIds(family.auntUncleIds || [])
         setIsRolesOpen(true)
     }
 
+    const addFamilyHead = (userId: string) => {
+        if (userId && !selectedFamilyHeadIds.includes(userId)) {
+            setSelectedFamilyHeadIds([...selectedFamilyHeadIds, userId])
+        }
+    }
+
+    const removeFamilyHead = (userId: string) => {
+        setSelectedFamilyHeadIds(selectedFamilyHeadIds.filter(id => id !== userId))
+    }
+
     const addAuntUncle = (userId: string) => {
-        if (userId && userId !== 'none' && !selectedAuntUncleIds.includes(userId)) {
+        if (userId && !selectedAuntUncleIds.includes(userId)) {
             setSelectedAuntUncleIds([...selectedAuntUncleIds, userId])
         }
     }
@@ -174,7 +184,7 @@ export default function FamilyList({ families, users }: FamilyListProps) {
         setIsLoading(true)
         try {
             const result = await updateFamily(editingFamily.id, {
-                familyHeadId: selectedFamilyHeadId === 'none' ? null : selectedFamilyHeadId,
+                familyHeadIds: selectedFamilyHeadIds,
                 auntUncleIds: selectedAuntUncleIds
             })
             if (result.success) {
@@ -303,7 +313,7 @@ export default function FamilyList({ families, users }: FamilyListProps) {
                     </DialogContent>
                 </Dialog>
 
-                {/* Roles Dialog */}
+                {/* Roles Dialog (UPDATED) */}
                 <Dialog open={isRolesOpen} onOpenChange={setIsRolesOpen}>
                     <DialogContent className="sm:max-w-lg">
                         <DialogHeader>
@@ -312,26 +322,55 @@ export default function FamilyList({ families, users }: FamilyListProps) {
                                 Manage Family Roles
                             </DialogTitle>
                             <DialogDescription>
-                                Assign a family head and aunts/uncles to {editingFamily?.name}
+                                Assign family heads and aunts/uncles to {editingFamily?.name}
                             </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-6 py-4">
-                            {/* Family Head */}
+                            {/* Family Heads */}
                             <div className="space-y-2">
-                                <Label>Family Head</Label>
-                                <Select value={selectedFamilyHeadId} onValueChange={setSelectedFamilyHeadId}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select family head" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="none">No family head</SelectItem>
-                                        {users.map((user) => (
-                                            <SelectItem key={user.id} value={user.id}>
-                                                {user.name} ({user.email})
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <Label>Family Heads</Label>
+                                <div className="flex gap-2">
+                                    <Select onValueChange={addFamilyHead}>
+                                        <SelectTrigger className="flex-1">
+                                            <SelectValue placeholder="Add family head" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {users
+                                                .filter(u => !selectedFamilyHeadIds.includes(u.id) && !selectedAuntUncleIds.includes(u.id))
+                                                .map((user) => (
+                                                    <SelectItem key={user.id} value={user.id}>
+                                                        {user.name} ({user.email})
+                                                    </SelectItem>
+                                                ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                {selectedFamilyHeadIds.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                        {selectedFamilyHeadIds.map(id => {
+                                            const user = users.find(u => u.id === id)
+                                            return (
+                                                <Badge key={id} className="gap-1 pr-1 bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200">
+                                                    <Crown className="w-3 h-3 mr-1" />
+                                                    {user?.name || 'Unknown'}
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-4 w-4 ml-1 hover:bg-amber-200/50 rounded-full"
+                                                        onClick={(e) => {
+                                                            e.preventDefault()
+                                                            e.stopPropagation()
+                                                            removeFamilyHead(id)
+                                                        }}
+                                                    >
+                                                        <X className="w-3 h-3" />
+                                                    </Button>
+                                                </Badge>
+                                            )
+                                        })}
+                                    </div>
+                                )}
                             </div>
 
                             {/* Aunts/Uncles */}
@@ -344,7 +383,7 @@ export default function FamilyList({ families, users }: FamilyListProps) {
                                         </SelectTrigger>
                                         <SelectContent>
                                             {users
-                                                .filter(u => !selectedAuntUncleIds.includes(u.id) && u.id !== selectedFamilyHeadId)
+                                                .filter(u => !selectedAuntUncleIds.includes(u.id) && !selectedFamilyHeadIds.includes(u.id))
                                                 .map((user) => (
                                                     <SelectItem key={user.id} value={user.id}>
                                                         {user.name} ({user.email})
@@ -361,10 +400,15 @@ export default function FamilyList({ families, users }: FamilyListProps) {
                                                 <Badge key={id} variant="secondary" className="gap-1 pr-1">
                                                     {user?.name || 'Unknown'}
                                                     <Button
+                                                        type="button"
                                                         variant="ghost"
-                                                        size="icon-xs"
-                                                        className="h-4 w-4 hover:bg-destructive/20"
-                                                        onClick={() => removeAuntUncle(id)}
+                                                        size="icon"
+                                                        className="h-4 w-4 ml-1 hover:bg-destructive/20 rounded-full"
+                                                        onClick={(e) => {
+                                                            e.preventDefault()
+                                                            e.stopPropagation()
+                                                            removeAuntUncle(id)
+                                                        }}
                                                     >
                                                         <X className="w-3 h-3" />
                                                     </Button>
@@ -388,7 +432,7 @@ export default function FamilyList({ families, users }: FamilyListProps) {
                 </Dialog>
             </div>
 
-            {/* Families Table */}
+            {/* Families Table (UPDATED) */}
             <Card>
                 <CardContent className="p-0">
                     <Table>
@@ -415,20 +459,25 @@ export default function FamilyList({ families, users }: FamilyListProps) {
                                         <TableCell className="font-medium">{family.name}</TableCell>
                                         <TableCell>
                                             <div className="space-y-1">
-                                                {family.familyHeadName && (
-                                                    <div className="flex items-center gap-1 text-sm">
-                                                        <Crown className="w-3 h-3 text-amber-500" />
-                                                        <span>{family.familyHeadName}</span>
-                                                    </div>
-                                                )}
-                                                {family.auntUncleNames.length > 0 && (
+                                                {family.familyHeadNames && family.familyHeadNames.length > 0 ? (
+                                                    family.familyHeadNames.map((name, i) => (
+                                                        <div key={i} className="flex items-center gap-1 text-sm font-medium text-amber-700 dark:text-amber-500">
+                                                            <Crown className="w-3 h-3" />
+                                                            <span>{name}</span>
+                                                        </div>
+                                                    ))
+                                                ) : null}
+
+                                                {family.auntUncleNames && family.auntUncleNames.length > 0 && (
                                                     <div className="text-xs text-muted-foreground">
                                                         {family.auntUncleNames.length} aunt/uncle{family.auntUncleNames.length > 1 ? 's' : ''}
                                                     </div>
                                                 )}
-                                                {!family.familyHeadName && family.auntUncleNames.length === 0 && (
-                                                    <span className="text-xs text-muted-foreground">Not assigned</span>
-                                                )}
+
+                                                {(!family.familyHeadNames || family.familyHeadNames.length === 0) &&
+                                                    (!family.auntUncleNames || family.auntUncleNames.length === 0) && (
+                                                        <span className="text-xs text-muted-foreground">Not assigned</span>
+                                                    )}
                                             </div>
                                         </TableCell>
                                         <TableCell className="text-center">

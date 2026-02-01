@@ -3,7 +3,7 @@
 import { requireAdmin } from '@/lib/auth-helpers'
 import { adminDb } from '@/lib/firebase-admin'
 import { revalidatePath } from 'next/cache'
-import { Timestamp } from 'firebase-admin/firestore'
+import { Timestamp, FieldValue } from 'firebase-admin/firestore'
 import { PairingDoc, UserDoc, FamilyDoc, SubmissionDoc } from '@/types/firestore' // Raw types
 import { User, Family, Submission } from '@/types/index' // Client types
 
@@ -191,6 +191,12 @@ export async function createPairing(
             await adminDb.collection('users').doc(uid).update({ familyId })
         }
 
+        // Update Family memberIds
+        await adminDb.collection('families').doc(familyId).update({
+            memberIds: FieldValue.arrayUnion(mentorId, ...menteeIds),
+            updatedAt: Timestamp.now()
+        })
+
         await adminDb.collection('auditLogs').add({
             action: 'CREATE',
             entityType: 'Pairing',
@@ -201,9 +207,10 @@ export async function createPairing(
         })
 
         revalidatePath('/admin/pairings')
+        revalidatePath('/admin/families')
 
         return { success: true, pairingId: pairingRef.id }
-    } catch (error) {
+    } catch (error: any) {
         console.error('Pairing creation error:', error)
         return { success: false, error: 'Failed to create pairing' }
     }
@@ -256,7 +263,14 @@ export async function addMenteeToPairing(pairingId: string, menteeId: string): P
 
         await adminDb.collection('users').doc(menteeId).update({ familyId: data.familyId })
 
+        // Add to family
+        await adminDb.collection('families').doc(data.familyId).update({
+            memberIds: FieldValue.arrayUnion(menteeId),
+            updatedAt: Timestamp.now()
+        })
+
         revalidatePath('/admin/pairings')
+        revalidatePath('/admin/families')
 
         return { success: true, pairingId }
     } catch (error) {
@@ -283,7 +297,14 @@ export async function removeMenteeFromPairing(pairingId: string, menteeId: strin
 
         await adminDb.collection('users').doc(menteeId).update({ familyId: null })
 
+        // Remove from family
+        await adminDb.collection('families').doc(data.familyId).update({
+            memberIds: FieldValue.arrayRemove(menteeId),
+            updatedAt: Timestamp.now()
+        })
+
         revalidatePath('/admin/pairings')
+        revalidatePath('/admin/families')
 
         return { success: true, pairingId }
     } catch (error) {
@@ -314,37 +335,78 @@ export async function updatePairing(
 
         const currentData = snap.data() as PairingDoc
         const updates: any = { updatedAt: Timestamp.now() }
-        const newFamilyId = data.familyId || currentData.familyId
 
-        // Handle Family Change logic if needed (updating users' familyId)
-        // For simplicity, we ensure all members of this pairing are set to the target familyId
+        const currentFamilyId = currentData.familyId
+        const newFamilyId = data.familyId || currentFamilyId
+        const familyChanged = newFamilyId !== currentFamilyId
 
+        const currentMentorId = currentData.mentorId
+        const newMentorId = data.mentorId || currentMentorId
+
+        const currentMenteeIds = currentData.menteeIds
+        const newMenteeIds = data.menteeIds || currentMenteeIds
+
+        // Prepare updates
         if (data.familyId) updates.familyId = data.familyId
         if (data.mentorId) updates.mentorId = data.mentorId
         if (data.menteeIds) updates.menteeIds = data.menteeIds
 
         await pairingRef.update(updates)
 
-        // Sync User Family IDs
-        const targetFamilyId = data.familyId || currentData.familyId
+        const allOldMembers = [currentMentorId, ...currentMenteeIds]
+        const allNewMembers = [newMentorId, ...newMenteeIds]
 
-        // 1. Update old mentor if changed (remove family assignment or keep? Assuming keep for now or manual fix)
-        // Better: Update NEW mentor to family
-        if (data.mentorId) {
-            await adminDb.collection('users').doc(data.mentorId).update({ familyId: targetFamilyId })
+        if (familyChanged) {
+            // 1. Remove ALL old members from OLD family
+            if (allOldMembers.length > 0) {
+                await adminDb.collection('families').doc(currentFamilyId).update({
+                    memberIds: FieldValue.arrayRemove(...allOldMembers),
+                    updatedAt: Timestamp.now()
+                })
+            }
+
+            // 2. Add ALL new members to NEW family
+            if (allNewMembers.length > 0) {
+                await adminDb.collection('families').doc(newFamilyId).update({
+                    memberIds: FieldValue.arrayUnion(...allNewMembers),
+                    updatedAt: Timestamp.now()
+                })
+            }
+
+            // 3. Update User Docs
+            const removedFromPairing = allOldMembers.filter(id => !allNewMembers.includes(id))
+
+            for (const uid of allNewMembers) {
+                await adminDb.collection('users').doc(uid).update({ familyId: newFamilyId })
+            }
+            for (const uid of removedFromPairing) {
+                await adminDb.collection('users').doc(uid).update({ familyId: null })
+            }
+
         } else {
-            // Ensure current mentor is in family
-            await adminDb.collection('users').doc(currentData.mentorId).update({ familyId: targetFamilyId })
-        }
+            // Family is same. Sync changes.
+            const addedToPairing = allNewMembers.filter(id => !allOldMembers.includes(id))
+            const removedFromPairing = allOldMembers.filter(id => !allNewMembers.includes(id))
 
-        // 2. Update Mentees
-        const menteesToUpdate = data.menteeIds || currentData.menteeIds
+            if (addedToPairing.length > 0) {
+                await adminDb.collection('families').doc(newFamilyId).update({
+                    memberIds: FieldValue.arrayUnion(...addedToPairing),
+                    updatedAt: Timestamp.now()
+                })
+                for (const uid of addedToPairing) {
+                    await adminDb.collection('users').doc(uid).update({ familyId: newFamilyId })
+                }
+            }
 
-        // If mentees changed, we should probably unset familyId for removed mentees, 
-        // but finding exactly which ones were removed efficiently is tricky without current list.
-        // For now, let's just ensure all CURRENT mentees have the correct familyId.
-        for (const uid of menteesToUpdate) {
-            await adminDb.collection('users').doc(uid).update({ familyId: targetFamilyId })
+            if (removedFromPairing.length > 0) {
+                await adminDb.collection('families').doc(newFamilyId).update({
+                    memberIds: FieldValue.arrayRemove(...removedFromPairing),
+                    updatedAt: Timestamp.now()
+                })
+                for (const uid of removedFromPairing) {
+                    await adminDb.collection('users').doc(uid).update({ familyId: null })
+                }
+            }
         }
 
         // Log audit
@@ -358,6 +420,7 @@ export async function updatePairing(
         })
 
         revalidatePath('/admin/pairings')
+        revalidatePath('/admin/families')
         return { success: true, pairingId }
 
     } catch (error: any) {
