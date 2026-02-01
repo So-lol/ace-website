@@ -46,7 +46,7 @@ export default function AboutPage() {
                                 <div className="p-8 flex flex-col justify-center">
                                     <h2 className="text-2xl font-bold mb-4">What is Anh Chi Em?</h2>
                                     <p className="text-muted-foreground mb-4">
-                                        &quot;Anh Chi Em&quot; (兄姐弟/妹) translates to &quot;Older Brother/Sister, Younger Sibling&quot;
+                                        &quot;Anh Chị Em&quot; translates to &quot;Older Brother/Sister, Younger Sibling&quot;
                                         in Vietnamese. This program embodies the cultural value of family bonds
                                         and mentorship within our student community.
                                     </p>
@@ -61,7 +61,6 @@ export default function AboutPage() {
                                     <div className="text-center text-white">
                                         <div className="text-6xl font-bold mb-2">ACE</div>
                                         <div className="text-lg opacity-90">Anh Chị Em</div>
-                                        <div className="text-sm opacity-75 mt-2">兄姐弟妹</div>
                                     </div>
                                 </div>
                             </div>
