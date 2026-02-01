@@ -15,7 +15,8 @@ import {
     TrendingUp,
     Clock,
     CheckCircle2,
-    AlertCircle
+    AlertCircle,
+    Image
 } from 'lucide-react'
 import { getAdminStats } from '@/lib/actions/stats'
 import { getSubmissions } from '@/lib/actions/submissions'
@@ -221,6 +222,12 @@ export default async function AdminDashboardPage() {
                                     <Button variant="outline" className="w-full h-auto py-4 flex-col gap-2">
                                         <Calculator className="w-5 h-5" />
                                         <span className="text-xs">Point Adjustments</span>
+                                    </Button>
+                                </Link>
+                                <Link href="/admin/media">
+                                    <Button variant="outline" className="w-full h-auto py-4 flex-col gap-2">
+                                        <Image className="w-5 h-5" />
+                                        <span className="text-xs">Media Management</span>
                                     </Button>
                                 </Link>
                             </CardContent>

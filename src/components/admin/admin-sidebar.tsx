@@ -17,7 +17,8 @@ import {
     Cat,
     LogOut,
     ChevronLeft,
-    ChevronRight
+    ChevronRight,
+    Image
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -36,6 +37,7 @@ const adminNavItems = [
     { name: 'Announcements', href: '/admin/announcements', icon: Megaphone },
     { divider: true },
     { name: 'Submissions', href: '/admin/submissions', icon: FileImage },
+    { name: 'Media', href: '/admin/media', icon: Image },
     { name: 'Points', href: '/admin/points', icon: Calculator },
     { name: 'Audit Log', href: '/admin/audit', icon: FileText },
 ]
