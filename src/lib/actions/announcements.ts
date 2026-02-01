@@ -14,22 +14,38 @@ export async function getAnnouncements(publishedOnly = false) {
         }
 
         const snapshot = await query.get()
-        return snapshot.docs.map(doc => ({
+        let announcements = snapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
         })) as AnnouncementDoc[]
+
+        if (publishedOnly) {
+            const now = new Date()
+            announcements = announcements.filter(a => {
+                const pDate = a.publishedAt?.toDate ? a.publishedAt.toDate() : (a.publishedAt as any instanceof Date ? a.publishedAt : null)
+                return pDate && pDate <= now
+            })
+        }
+
+        return announcements
     } catch (error) {
         console.error('Error fetching announcements:', error)
         return []
     }
 }
 
-export async function createAnnouncement(data: { title: string; content: string; authorId: string; authorName: string; isPublished: boolean; isPinned: boolean }) {
+export async function createAnnouncement(data: { title: string; content: string; authorId: string; authorName: string; isPublished: boolean; isPinned: boolean; publishedAt?: Date | null }) {
     try {
         const docRef = adminDb.collection('announcements').doc()
+
+        let publishedAt = null
+        if (data.isPublished) {
+            publishedAt = data.publishedAt ? Timestamp.fromDate(data.publishedAt) : Timestamp.now()
+        }
+
         await docRef.set({
             ...data,
-            publishedAt: data.isPublished ? Timestamp.now() : null,
+            publishedAt,
             createdAt: Timestamp.now(),
             updatedAt: Timestamp.now(),
         })
@@ -44,7 +60,7 @@ export async function createAnnouncement(data: { title: string; content: string;
     }
 }
 
-export async function updateAnnouncement(id: string, data: Partial<AnnouncementDoc>) {
+export async function updateAnnouncement(id: string, data: Omit<Partial<AnnouncementDoc>, 'publishedAt'> & { publishedAt?: Date | null }) {
     try {
         const updateData: any = {
             ...data,
@@ -52,11 +68,17 @@ export async function updateAnnouncement(id: string, data: Partial<AnnouncementD
         }
 
         if (data.isPublished === true) {
-            // Check if it was already published to avoid overwriting original publish date
-            const doc = await adminDb.collection('announcements').doc(id).get()
-            const currentData = doc.data() as AnnouncementDoc
-            if (!currentData.publishedAt) {
-                updateData.publishedAt = Timestamp.now()
+            // If explicit date provided, use it
+            if (data.publishedAt) {
+                updateData.publishedAt = Timestamp.fromDate(data.publishedAt)
+            }
+            // Else if no date exists on doc (first publish), set to now
+            else {
+                const doc = await adminDb.collection('announcements').doc(id).get()
+                const currentData = doc.data() as AnnouncementDoc
+                if (!currentData.publishedAt) {
+                    updateData.publishedAt = Timestamp.now()
+                }
             }
         } else if (data.isPublished === false) {
             updateData.publishedAt = null

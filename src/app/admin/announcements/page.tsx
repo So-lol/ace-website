@@ -9,12 +9,20 @@ export const metadata: Metadata = {
 }
 
 export default async function AnnouncementsPage() {
-    const announcements = await getAnnouncements(false) // false = fetch all
+    const rawAnnouncements = await getAnnouncements(false) // false = fetch all
+
+    // Convert Timestamps to Dates for Client Component to avoid serialization error
+    const announcements = rawAnnouncements.map(a => ({
+        ...a,
+        createdAt: (a.createdAt as any)?.toDate?.() || a.createdAt,
+        updatedAt: (a.updatedAt as any)?.toDate?.() || a.updatedAt,
+        publishedAt: (a.publishedAt as any)?.toDate?.() || a.publishedAt,
+    }))
 
     return (
         <>
             <AdminHeader title="Announcements" />
-            <AnnouncementList announcements={announcements} />
+            <AnnouncementList announcements={announcements as any} />
         </>
     )
 }
