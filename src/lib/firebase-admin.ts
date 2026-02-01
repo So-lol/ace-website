@@ -54,8 +54,11 @@ export async function verifyIdToken(idToken: string) {
     try {
         const decodedToken = await adminAuth.verifyIdToken(idToken)
         return { user: decodedToken, error: null }
-    } catch (error) {
-        console.error('Error verifying Firebase ID token:', error)
+    } catch (error: any) {
+        // Suppress strict validity checks like expiration since client refresh handles it
+        if (error.code !== 'auth/id-token-expired') {
+            console.error('Error verifying Firebase ID token:', error)
+        }
         return { user: null, error }
     }
 }

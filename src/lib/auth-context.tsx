@@ -2,7 +2,8 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import { auth } from '@/lib/firebase'
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth'
+import { onIdTokenChanged, User as FirebaseUser } from 'firebase/auth'
+import { verifyAndSyncUser } from '@/lib/actions/auth'
 
 interface AuthUser {
     id: string
@@ -39,6 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         setMounted(true)
+        // Cleanup function for onIdTokenChanged is handled in the other useEffect
     }, [])
 
     const getIdToken = async (): Promise<string | null> => {
@@ -61,17 +63,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const currentUser = auth.currentUser
             setFirebaseUser(currentUser)
 
-            if (currentUser?.email) {
+            if (currentUser) {
                 // Fetch user profile from API with ID token
-                const idToken = await currentUser.getIdToken()
-                const response = await fetch('/api/auth/me', {
-                    headers: {
-                        'Authorization': `Bearer ${idToken}`
-                    }
-                })
-                if (response.ok) {
-                    const userData = await response.json()
-                    setUser(userData)
+                const idToken = await currentUser.getIdToken(true) // Force refresh to ensure latest claims
+                const result = await verifyAndSyncUser(idToken)
+
+                if (result.success && result.user) {
+                    setUser(result.user)
                 } else {
                     setUser(null)
                 }
@@ -90,29 +88,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         if (!mounted || !auth) return
 
-        const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+        const unsubscribe = onIdTokenChanged(auth, async (fbUser) => {
             setFirebaseUser(fbUser)
-            if (fbUser?.email) {
-                // Fetch user profile from database
+            if (fbUser) {
                 try {
+                    // This creates a reliable sync: 
+                    // 1. Get fresh token
+                    // 2. Send to server to update cookie (handles expiration)
+                    // 3. Get fresh user data
                     const idToken = await fbUser.getIdToken()
-                    const response = await fetch('/api/auth/me', {
-                        headers: {
-                            'Authorization': `Bearer ${idToken}`
-                        }
-                    })
-                    if (response.ok) {
-                        const userData = await response.json()
-                        setUser(userData)
+                    const result = await verifyAndSyncUser(idToken)
+
+                    if (result.success && result.user) {
+                        setUser(result.user)
                     } else {
-                        setUser(null)
+                        console.error('Failed to sync user session:', result.error)
+                        // Don't clear user immediately to avoid flickering if it's just a transient error?
+                        // But if token is invalid, we should probably clear.
+                        if (result.error === 'Invalid authentication token') {
+                            setUser(null)
+                        }
                     }
                 } catch (error) {
-                    console.error('Error fetching user profile:', error)
-                    setUser(null)
+                    console.error('Error refreshing session:', error)
                 }
             } else {
                 setUser(null)
+                // Optional: Call server to clear cookie? 
+                // signOut() handles consistent logout.
             }
             setIsLoading(false)
         })

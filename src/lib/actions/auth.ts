@@ -7,11 +7,13 @@ import { Timestamp } from 'firebase-admin/firestore'
 import { UserDoc } from '@/types/firestore'
 
 // Types
+// Types
 type AuthResult = {
     success: boolean
     error?: string
     redirectTo?: string
-    needsClientAuth?: boolean // Flag to tell client to perform client-side sign-in
+    needsClientAuth?: boolean
+    user?: any // return user data for context
 }
 
 export async function getCurrentUser(): Promise<UserDoc | null> {
@@ -120,11 +122,12 @@ export async function verifyAndSyncUser(idToken: string): Promise<AuthResult> {
         // 2. Check if user exists in Firestore
         const userRef = adminDb.collection('users').doc(firebaseUser.uid)
         const userSnap = await userRef.get()
+        let userData: UserDoc
 
         if (!userSnap.exists) {
-            // Handle edge case: User created in Auth but not Firestore (e.g. earlier failure)
+            // Handle edge case: User created in Auth but not Firestore
             console.warn(`Syncing missing user ${firebaseUser.uid} to Firestore`)
-            const newUser: UserDoc = {
+            userData = {
                 uid: firebaseUser.uid,
                 email: firebaseUser.email || '',
                 name: firebaseUser.name || 'Unknown',
@@ -134,10 +137,9 @@ export async function verifyAndSyncUser(idToken: string): Promise<AuthResult> {
                 createdAt: Timestamp.now(),
                 updatedAt: Timestamp.now(),
             }
-            await userRef.set(newUser)
+            await userRef.set(userData)
         } else {
-            // Optional: Update last login or sync profile data
-            // await userRef.update({ lastLogin: Timestamp.now() })
+            userData = { id: userSnap.id, ...userSnap.data() } as unknown as UserDoc
         }
 
         // 3. Create Session Cookie (Standard approach or just use the ID token as session)
@@ -164,7 +166,12 @@ export async function verifyAndSyncUser(idToken: string): Promise<AuthResult> {
             // A robust app uses `createSessionCookie` from Admin SDK.
         })
 
-        return { success: true, redirectTo: '/dashboard' }
+        // Return user data (serializing timestamps needed?)
+        // Next.js Server Actions serialize generic objects fine (as JSON), assuming client supports it
+        // Or we return a plain object
+        const plainUser = JSON.parse(JSON.stringify(userData))
+
+        return { success: true, redirectTo: '/dashboard', user: plainUser }
 
     } catch (error) {
         console.error('Verify user error:', error)
