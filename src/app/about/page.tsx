@@ -241,13 +241,13 @@ export default function AboutPage() {
                                     Reach out to us!
                                 </p>
                                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                                    <a href="mailto:ace@vsam.umn.edu">
+                                    <a href="mailto:vsa@umn.edu">
                                         <Button className="gap-2 doraemon-gradient text-white">
                                             <Mail className="w-4 h-4" />
                                             Email ACE Team
                                         </Button>
                                     </a>
-                                    <a href="https://instagram.com/vsam_umn" target="_blank" rel="noopener noreferrer">
+                                    <a href="https://instagram.com/vsam.ace/" target="_blank" rel="noopener noreferrer">
                                         <Button variant="outline" className="gap-2">
                                             <MessageCircle className="w-4 h-4" />
                                             DM on Instagram
