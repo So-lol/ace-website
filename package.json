@@ -6,11 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "db:seed": "node --no-warnings --experimental-require-module dist-seed/seed.js"
-  },
-  "prisma": {
-    "seed": "node --no-warnings --experimental-require-module dist-seed/seed.js"
+    "lint": "eslint"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

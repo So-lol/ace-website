@@ -254,7 +254,7 @@ export default function PairingList({ pairings, families, users }: PairingListPr
 
             {/* Pairings List */}
             <div className="space-y-8">
-                {Object.entries(familyGroups).map(([familyName, familyPairings]) => (
+                {(Object.entries(familyGroups) as [string, any[]][]).map(([familyName, familyPairings]) => (
                     <div key={familyName}>
                         <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
                             <Users className="w-5 h-5 text-muted-foreground" />
