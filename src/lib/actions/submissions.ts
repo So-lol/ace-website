@@ -1,9 +1,10 @@
 'use server'
 
 import { getAuthenticatedUser, requireAdmin } from '@/lib/auth-helpers'
-import { uploadFile, deleteFile } from '@/lib/firebase-admin'
-import { prisma } from '@/lib/prisma'
+import { uploadFile, deleteFile, adminDb } from '@/lib/firebase-admin'
 import { revalidatePath } from 'next/cache'
+import { Timestamp, FieldValue } from 'firebase-admin/firestore'
+import { SubmissionDoc, PairingDoc, UserDoc, SubmissionStatus } from '@/types/firestore'
 
 export type UploadResult = {
     success: boolean
@@ -85,72 +86,70 @@ export async function createSubmission(
     }
 
     try {
-        // Find user in our database with pairings
-        const dbUser = await prisma.user.findUnique({
-            where: { email: user.email.toLowerCase() },
-            include: {
-                menteePairings: {
-                    include: { pairing: true }
-                },
-                mentorPairings: true,
-            }
-        })
+        // Find user's pairing
+        const pairingsRef = adminDb.collection('pairings')
+        // Query as mentor
+        let snapshot = await pairingsRef.where('mentorId', '==', user.id).get()
 
-        if (!dbUser) {
-            return { success: false, error: 'User profile not found' }
+        // If not mentor, query as mentee (array-contains)
+        if (snapshot.empty) {
+            snapshot = await pairingsRef.where('menteeIds', 'array-contains', user.id).get()
         }
 
-        // Find user's pairing (as mentor or mentee)
-        let pairingId: string | null = null
-
-        if (dbUser.mentorPairings.length > 0) {
-            pairingId = dbUser.mentorPairings[0].id
-        } else if (dbUser.menteePairings.length > 0) {
-            pairingId = dbUser.menteePairings[0].pairing.id
-        }
-
-        if (!pairingId) {
+        if (snapshot.empty) {
             return { success: false, error: 'You are not part of a pairing yet. Please contact an admin.' }
         }
 
+        const pairingDoc = snapshot.docs[0]
+        const pairingId = pairingDoc.id
+
         // Calculate points
         const basePoints = 10
-        const bonusActivities = await prisma.bonusActivity.findMany({
-            where: {
-                id: { in: bonusActivityIds },
-                isActive: true,
-            }
-        })
-        const bonusPoints = bonusActivities.reduce((sum, b) => sum + b.points, 0)
+        let bonusPoints = 0
+
+        if (bonusActivityIds.length > 0) {
+            // Fetch relevant bonus activities
+            // Firestore 'in' query supports up to 10 items.
+            // If > 10, batch or loop. Assuming < 10 for now.
+            const bonusesSnap = await adminDb.collection('bonusActivities')
+                .where(process.env.FIRESTORE_DOC_ID_FIELD || '__name__', 'in', bonusActivityIds)
+                .get()
+
+            bonusesSnap.forEach(doc => {
+                const data = doc.data()
+                if (data.isActive) {
+                    bonusPoints += (data.points || 0)
+                }
+            })
+        }
+
         const totalPoints = basePoints + bonusPoints
 
         // Create submission
-        const submission = await prisma.submission.create({
-            data: {
-                pairingId,
-                submitterId: dbUser.id,
-                weekNumber,
-                year,
-                imageUrl,
-                imagePath,
-                basePoints,
-                bonusPoints,
-                totalPoints,
-                bonusActivities: {
-                    create: bonusActivities.map(b => ({
-                        bonusActivityId: b.id,
-                        pointsAwarded: b.points,
-                    }))
-                }
-            }
-        })
+        const newSubmission: Omit<SubmissionDoc, 'id'> = {
+            pairingId,
+            submitterId: user.id,
+            weekNumber,
+            year,
+            imageUrl,
+            imagePath,
+            status: 'PENDING',
+            basePoints,
+            bonusPoints,
+            totalPoints,
+            bonusActivityIds, // Store IDs directly
+            createdAt: Timestamp.now(),
+            updatedAt: Timestamp.now(),
+        }
+
+        const docRef = await adminDb.collection('submissions').add(newSubmission)
 
         revalidatePath('/dashboard')
         revalidatePath('/dashboard/submissions')
 
         return {
             success: true,
-            submissionId: submission.id,
+            submissionId: docRef.id,
         }
     } catch (error) {
         console.error('Submission creation error:', error)
@@ -173,7 +172,6 @@ export async function deleteUploadedImage(imagePath: string): Promise<void> {
  * Approve a submission (admin only)
  */
 export async function approveSubmission(submissionId: string): Promise<SubmissionResult> {
-    // Verify admin user
     let adminUser
     try {
         adminUser = await requireAdmin()
@@ -182,57 +180,56 @@ export async function approveSubmission(submissionId: string): Promise<Submissio
     }
 
     try {
-        // Get the submission
-        const submission = await prisma.submission.findUnique({
-            where: { id: submissionId },
-            include: { pairing: true }
-        })
+        await adminDb.runTransaction(async (transaction) => {
+            const submissionRef = adminDb.collection('submissions').doc(submissionId)
+            const submissionSnap = await transaction.get(submissionRef)
 
-        if (!submission) {
-            return { success: false, error: 'Submission not found' }
-        }
+            if (!submissionSnap.exists) {
+                throw new Error('Submission not found')
+            }
 
-        if (submission.status !== 'PENDING') {
-            return { success: false, error: 'Submission has already been reviewed' }
-        }
+            const submissionData = submissionSnap.data() as SubmissionDoc
 
-        // Approve the submission
-        await prisma.submission.update({
-            where: { id: submissionId },
-            data: {
+            if (submissionData.status !== 'PENDING') {
+                throw new Error('Submission has already been reviewed')
+            }
+
+            // Approve submission
+            transaction.update(submissionRef, {
                 status: 'APPROVED',
                 reviewerId: adminUser.id,
-                reviewedAt: new Date(),
-            }
-        })
+                reviewedAt: Timestamp.now(),
+                updatedAt: Timestamp.now(),
+            })
 
-        // Update pairing points
-        await prisma.pairing.update({
-            where: { id: submission.pairingId },
-            data: {
-                weeklyPoints: { increment: submission.totalPoints },
-                totalPoints: { increment: submission.totalPoints },
-            }
-        })
+            // Update pairing points
+            const pairingRef = adminDb.collection('pairings').doc(submissionData.pairingId)
 
-        // Create audit log
-        await prisma.auditLog.create({
-            data: {
+            transaction.update(pairingRef, {
+                weeklyPoints: FieldValue.increment(submissionData.totalPoints),
+                totalPoints: FieldValue.increment(submissionData.totalPoints),
+                updatedAt: Timestamp.now(),
+            })
+
+            // Audit Log
+            const auditRef = adminDb.collection('auditLogs').doc()
+            transaction.set(auditRef, {
                 action: 'APPROVE',
                 entityType: 'Submission',
                 entityId: submissionId,
                 actorId: adminUser.id,
-                afterValue: { status: 'APPROVED', points: submission.totalPoints },
-            }
+                afterValue: { status: 'APPROVED', points: submissionData.totalPoints },
+                createdAt: Timestamp.now(),
+            })
         })
 
         revalidatePath('/admin/submissions')
         revalidatePath('/leaderboard')
 
         return { success: true, submissionId }
-    } catch (error) {
+    } catch (error: any) {
         console.error('Approval error:', error)
-        return { success: false, error: 'Failed to approve submission' }
+        return { success: false, error: error.message || 'Failed to approve submission' }
     }
 }
 
@@ -240,7 +237,6 @@ export async function approveSubmission(submissionId: string): Promise<Submissio
  * Reject a submission (admin only)
  */
 export async function rejectSubmission(submissionId: string, reason: string): Promise<SubmissionResult> {
-    // Verify admin user
     let adminUser
     try {
         adminUser = await requireAdmin()
@@ -253,76 +249,114 @@ export async function rejectSubmission(submissionId: string, reason: string): Pr
     }
 
     try {
-        // Get the submission
-        const submission = await prisma.submission.findUnique({
-            where: { id: submissionId }
-        })
+        await adminDb.runTransaction(async (transaction) => {
+            const submissionRef = adminDb.collection('submissions').doc(submissionId)
+            const submissionSnap = await transaction.get(submissionRef)
 
-        if (!submission) {
-            return { success: false, error: 'Submission not found' }
-        }
+            if (!submissionSnap.exists) {
+                throw new Error('Submission not found')
+            }
 
-        if (submission.status !== 'PENDING') {
-            return { success: false, error: 'Submission has already been reviewed' }
-        }
+            const submissionData = submissionSnap.data() as SubmissionDoc
 
-        // Reject the submission
-        await prisma.submission.update({
-            where: { id: submissionId },
-            data: {
+            if (submissionData.status !== 'PENDING') {
+                throw new Error('Submission has already been reviewed')
+            }
+
+            // Reject submission and reset points
+            transaction.update(submissionRef, {
                 status: 'REJECTED',
                 reviewerId: adminUser.id,
                 reviewReason: reason.trim(),
-                reviewedAt: new Date(),
+                reviewedAt: Timestamp.now(),
                 basePoints: 0,
                 bonusPoints: 0,
                 totalPoints: 0,
-            }
-        })
+                updatedAt: Timestamp.now(),
+            })
 
-        // Create audit log
-        await prisma.auditLog.create({
-            data: {
+            // Audit log
+            const auditRef = adminDb.collection('auditLogs').doc()
+            transaction.set(auditRef, {
                 action: 'REJECT',
                 entityType: 'Submission',
                 entityId: submissionId,
                 actorId: adminUser.id,
                 afterValue: { status: 'REJECTED', reason: reason.trim() },
-            }
+                createdAt: Timestamp.now(),
+            })
         })
 
         revalidatePath('/admin/submissions')
 
         return { success: true, submissionId }
-    } catch (error) {
+    } catch (error: any) {
         console.error('Rejection error:', error)
-        return { success: false, error: 'Failed to reject submission' }
+        return { success: false, error: error.message || 'Failed to reject submission' }
     }
 }
 
 /**
  * Get submissions for admin review
+ * Note: Returns manually constructed object with joined data
  */
-export async function getSubmissions(status?: 'PENDING' | 'APPROVED' | 'REJECTED') {
+export async function getSubmissions(status?: SubmissionStatus) {
     try {
-        const submissions = await prisma.submission.findMany({
-            where: status ? { status } : undefined,
-            include: {
-                pairing: {
-                    include: {
-                        mentor: true,
-                        mentees: { include: { mentee: true } },
-                        family: true,
-                    }
-                },
-                submitter: true,
-                reviewer: true,
-                bonusActivities: {
-                    include: { bonusActivity: true }
-                }
-            },
-            orderBy: { createdAt: 'desc' }
-        })
+        let query = adminDb.collection('submissions').orderBy('createdAt', 'desc')
+        if (status) { // orderBy status needs index if mixed with createdAt
+            query = query.where('status', '==', status)
+        }
+
+        const snapshot = await query.get()
+
+        // Manual "Join"
+        const submissions = await Promise.all(snapshot.docs.map(async (doc) => {
+            const data = doc.data() as SubmissionDoc
+
+            // Fetch submitter
+            const submitterSnap = await adminDb.collection('users').doc(data.submitterId).get()
+            const submitter = submitterSnap.exists ? submitterSnap.data() : { name: 'Unknown', email: 'unknown' }
+
+            // Fetch pairing and family
+            const pairingSnap = await adminDb.collection('pairings').doc(data.pairingId).get()
+            let pairingData = null
+            if (pairingSnap.exists) {
+                const pd = pairingSnap.data() as PairingDoc
+                // Fetch family
+                const familySnap = await adminDb.collection('families').doc(pd.familyId).get()
+                const family = familySnap.exists ? familySnap.data() : { name: 'Unknown Family' }
+
+                // Fetch mentor
+                const mentorSnap = await adminDb.collection('users').doc(pd.mentorId).get()
+                const mentor = mentorSnap.exists ? mentorSnap.data() : { name: 'Unknown Mentor' }
+
+                pairingData = { ...pd, id: pairingSnap.id, family, mentor }
+            }
+
+            // Fetch bonuses
+            let bonusActivities: any[] = []
+            if (data.bonusActivityIds && data.bonusActivityIds.length > 0) {
+                // Optimization: Could batch fetch all unique bonus IDs first
+                // For now, per row fetch is simpler but slower
+                const bonuses = await Promise.all(data.bonusActivityIds.map(async (id) => {
+                    const b = await adminDb.collection('bonusActivities').doc(id).get()
+                    return b.exists ? { ...b.data(), id } : null
+                }))
+                bonusActivities = bonuses.filter(Boolean).map(b => ({ bonusActivity: b }))
+            }
+
+            return {
+                ...data,
+                id: doc.id,
+                submitter: { ...submitter, id: data.submitterId },
+                pairing: pairingData,
+                bonusActivities,
+                // Serialize dates for client
+                createdAt: data.createdAt.toDate(),
+                updatedAt: data.updatedAt.toDate(),
+                reviewedAt: data.reviewedAt?.toDate() || null
+            }
+        }))
 
         return submissions
     } catch (error) {

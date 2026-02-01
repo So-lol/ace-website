@@ -1,8 +1,11 @@
 'use server'
 
 import { requireAdmin } from '@/lib/auth-helpers'
-import { prisma } from '@/lib/prisma'
+import { adminDb } from '@/lib/firebase-admin'
 import { revalidatePath } from 'next/cache'
+import { Timestamp } from 'firebase-admin/firestore'
+import { PairingDoc, UserDoc, FamilyDoc, SubmissionDoc } from '@/types/firestore' // Raw types
+import { User, Family, Submission } from '@/types/index' // Client types
 
 export type PairingResult = {
     success: boolean
@@ -10,25 +13,67 @@ export type PairingResult = {
     pairingId?: string
 }
 
+// Return type matching index.ts PairingFull (ish)
+// The page expects: family, mentor, mentees (User[] or equivalent), submissions (Submission[])
+
 /**
  * Get all pairings with related data
  */
 export async function getPairings() {
     try {
-        const pairings = await prisma.pairing.findMany({
-            include: {
-                family: true,
-                mentor: true,
-                mentees: {
-                    include: { mentee: true }
-                },
-                submissions: {
-                    orderBy: { createdAt: 'desc' },
-                    take: 5,
+        const snapshot = await adminDb.collection('pairings').orderBy('createdAt', 'desc').get()
+
+        const pairings = await Promise.all(snapshot.docs.map(async (doc) => {
+            const data = doc.data() as PairingDoc
+
+            // 1. Fetch Family
+            const familySnap = await adminDb.collection('families').doc(data.familyId).get()
+            const familyData = familySnap.exists ? familySnap.data() as FamilyDoc : { name: 'Unknown' } as FamilyDoc
+            const family = { ...familyData, id: familySnap.id, createdAt: familyData.createdAt?.toDate(), updatedAt: familyData.updatedAt?.toDate() }
+
+            // 2. Fetch Mentor
+            const mentorSnap = await adminDb.collection('users').doc(data.mentorId).get()
+            const mentorData = mentorSnap.exists ? mentorSnap.data() as UserDoc : { name: 'Unknown' } as UserDoc
+            const mentor = { ...mentorData, id: mentorSnap.id, createdAt: mentorData.createdAt?.toDate(), updatedAt: mentorData.updatedAt?.toDate() }
+
+            // 3. Fetch Mentees
+            const mentees = (await Promise.all(data.menteeIds.map(async (uid) => {
+                const menteeSnap = await adminDb.collection('users').doc(uid).get()
+                if (menteeSnap.exists) {
+                    const d = menteeSnap.data() as UserDoc
+                    return { ...d, id: uid, createdAt: d.createdAt.toDate(), updatedAt: d.updatedAt.toDate() }
                 }
-            },
-            orderBy: { createdAt: 'desc' }
-        })
+                return null
+            }))).filter(Boolean) as User[]
+
+            // 4. Fetch Submissions
+            const submissionsSnap = await adminDb.collection('submissions')
+                .where('pairingId', '==', doc.id)
+                .orderBy('createdAt', 'desc')
+                .get()
+
+            const submissions = submissionsSnap.docs.map(s => {
+                const sd = s.data() as SubmissionDoc
+                return {
+                    ...sd,
+                    id: s.id,
+                    createdAt: sd.createdAt.toDate(),
+                    updatedAt: sd.updatedAt.toDate(),
+                    reviewedAt: sd.reviewedAt?.toDate(),
+                }
+            }) as Submission[]
+
+            return {
+                ...data,
+                id: doc.id,
+                family,
+                mentor,
+                mentees, // Returning User[]
+                submissions,
+                createdAt: data.createdAt.toDate(),
+                updatedAt: data.updatedAt.toDate(),
+            }
+        }))
 
         return pairings
     } catch (error) {
@@ -42,32 +87,68 @@ export async function getPairings() {
  */
 export async function getPairing(pairingId: string) {
     try {
-        const pairing = await prisma.pairing.findUnique({
-            where: { id: pairingId },
-            include: {
-                family: true,
-                mentor: true,
-                mentees: {
-                    include: { mentee: true }
-                },
-                submissions: {
-                    include: {
-                        submitter: true,
-                        bonusActivities: {
-                            include: { bonusActivity: true }
-                        }
-                    },
-                    orderBy: { createdAt: 'desc' }
-                }
-            }
-        })
+        const docRef = adminDb.collection('pairings').doc(pairingId)
+        const docSnap = await docRef.get()
 
-        return pairing
+        if (!docSnap.exists) return null
+        const data = docSnap.data() as PairingDoc
+
+        // 1. Fetch Family
+        const familySnap = await adminDb.collection('families').doc(data.familyId).get()
+        const familyData = familySnap.exists ? familySnap.data() as FamilyDoc : { name: 'Unknown' } as FamilyDoc
+        const family = { ...familyData, id: familySnap.id, createdAt: familyData.createdAt?.toDate(), updatedAt: familyData.updatedAt?.toDate() }
+
+        // 2. Fetch Mentor
+        const mentorSnap = await adminDb.collection('users').doc(data.mentorId).get()
+        const mentorData = mentorSnap.exists ? mentorSnap.data() as UserDoc : { name: 'Unknown' } as UserDoc
+        const mentor = { ...mentorData, id: mentorSnap.id, createdAt: mentorData.createdAt?.toDate(), updatedAt: mentorData.updatedAt?.toDate() }
+
+        // 3. Fetch Mentees
+        const mentees = (await Promise.all(data.menteeIds.map(async (uid) => {
+            const menteeSnap = await adminDb.collection('users').doc(uid).get()
+            if (menteeSnap.exists) {
+                const d = menteeSnap.data() as UserDoc
+                return { ...d, id: uid, createdAt: d.createdAt.toDate(), updatedAt: d.updatedAt.toDate() }
+            }
+            return null
+        }))).filter(Boolean) as User[]
+
+        // 4. Fetch Submissions
+        const submissionsSnap = await adminDb.collection('submissions')
+            .where('pairingId', '==', pairingId)
+            .orderBy('createdAt', 'desc')
+            .get()
+
+        const submissions = submissionsSnap.docs.map(s => {
+            const sd = s.data() as SubmissionDoc
+            return {
+                ...sd,
+                id: s.id,
+                createdAt: sd.createdAt.toDate(),
+                updatedAt: sd.updatedAt.toDate(),
+                reviewedAt: sd.reviewedAt?.toDate(),
+            }
+        }) as Submission[]
+
+        return {
+            ...data,
+            id: docSnap.id,
+            family,
+            mentor,
+            mentees,
+            submissions,
+            createdAt: data.createdAt.toDate(),
+            updatedAt: data.updatedAt.toDate(),
+        }
     } catch (error) {
         console.error('Failed to fetch pairing:', error)
         return null
     }
 }
+
+// ... Create/Delete functions same as before (updating Types if passed)
+// createPairing: mentorId, menteeIds are strings.
+// Same impl as before. Can keep same.
 
 /**
  * Create a new pairing (admin only)
@@ -77,7 +158,6 @@ export async function createPairing(
     mentorId: string,
     menteeIds: string[]
 ): Promise<PairingResult> {
-    // Verify admin user
     let adminUser
     try {
         adminUser = await requireAdmin()
@@ -86,79 +166,42 @@ export async function createPairing(
     }
 
     try {
-        // Verify mentor exists and is a mentor
-        const mentor = await prisma.user.findUnique({
-            where: { id: mentorId }
-        })
-
-        if (!mentor) {
-            return { success: false, error: 'Mentor not found' }
+        const newPairing: Omit<PairingDoc, 'id'> = {
+            familyId,
+            mentorId,
+            menteeIds,
+            weeklyPoints: 0,
+            totalPoints: 0,
+            createdAt: Timestamp.now(),
+            updatedAt: Timestamp.now(),
         }
 
-        if (mentor.role !== 'MENTOR') {
-            return { success: false, error: 'Selected user is not a mentor' }
+        const pairingRef = await adminDb.collection('pairings').add(newPairing)
+
+        await adminDb.collection('users').doc(mentorId).update({ familyId })
+        for (const uid of menteeIds) {
+            await adminDb.collection('users').doc(uid).update({ familyId })
         }
 
-        // Verify mentees exist
-        const mentees = await prisma.user.findMany({
-            where: { id: { in: menteeIds } }
-        })
-
-        if (mentees.length !== menteeIds.length) {
-            return { success: false, error: 'One or more mentees not found' }
-        }
-
-        // Verify family exists
-        const family = await prisma.family.findUnique({
-            where: { id: familyId }
-        })
-
-        if (!family) {
-            return { success: false, error: 'Family not found' }
-        }
-
-        // Create pairing
-        const pairing = await prisma.pairing.create({
-            data: {
-                familyId,
-                mentorId,
-                mentees: {
-                    create: menteeIds.map(id => ({ menteeId: id }))
-                }
-            }
-        })
-
-        // Update family assignment for mentor and mentees
-        await prisma.user.updateMany({
-            where: { id: { in: [mentorId, ...menteeIds] } },
-            data: { familyId }
-        })
-
-        // Create audit log
-        await prisma.auditLog.create({
-            data: {
-                action: 'CREATE',
-                entityType: 'Pairing',
-                entityId: pairing.id,
-                actorId: adminUser.id,
-                afterValue: { familyId, mentorId, menteeIds },
-            }
+        await adminDb.collection('auditLogs').add({
+            action: 'CREATE',
+            entityType: 'Pairing',
+            entityId: pairingRef.id,
+            actorId: adminUser.id,
+            afterValue: { familyId, mentorId, menteeIds },
+            createdAt: Timestamp.now(),
         })
 
         revalidatePath('/admin/pairings')
 
-        return { success: true, pairingId: pairing.id }
+        return { success: true, pairingId: pairingRef.id }
     } catch (error) {
         console.error('Pairing creation error:', error)
         return { success: false, error: 'Failed to create pairing' }
     }
 }
 
-/**
- * Delete a pairing (admin only)
- */
 export async function deletePairing(pairingId: string): Promise<PairingResult> {
-    // Verify admin user
     let adminUser
     try {
         adminUser = await requireAdmin()
@@ -167,40 +210,17 @@ export async function deletePairing(pairingId: string): Promise<PairingResult> {
     }
 
     try {
-        // Get pairing before deletion
-        const pairing = await prisma.pairing.findUnique({
-            where: { id: pairingId },
-            include: {
-                mentor: true,
-                mentees: { include: { mentee: true } }
-            }
-        })
+        await adminDb.collection('pairings').doc(pairingId).delete()
 
-        if (!pairing) {
-            return { success: false, error: 'Pairing not found' }
-        }
-
-        // Delete pairing (cascade will handle mentees junction)
-        await prisma.pairing.delete({
-            where: { id: pairingId }
-        })
-
-        // Create audit log
-        await prisma.auditLog.create({
-            data: {
-                action: 'DELETE',
-                entityType: 'Pairing',
-                entityId: pairingId,
-                actorId: adminUser.id,
-                beforeValue: {
-                    mentor: pairing.mentor.name,
-                    mentees: pairing.mentees.map(m => m.mentee.name),
-                },
-            }
+        await adminDb.collection('auditLogs').add({
+            action: 'DELETE',
+            entityType: 'Pairing',
+            entityId: pairingId,
+            actorId: adminUser.id,
+            createdAt: Timestamp.now(),
         })
 
         revalidatePath('/admin/pairings')
-
         return { success: true, pairingId }
     } catch (error) {
         console.error('Pairing deletion error:', error)
@@ -208,46 +228,25 @@ export async function deletePairing(pairingId: string): Promise<PairingResult> {
     }
 }
 
-/**
- * Add a mentee to an existing pairing (admin only)
- */
 export async function addMenteeToPairing(pairingId: string, menteeId: string): Promise<PairingResult> {
-    // Verify admin user
     try {
         await requireAdmin()
-    } catch {
-        return { success: false, error: 'Only admins can modify pairings' }
-    }
 
-    try {
-        // Verify pairing exists
-        const pairing = await prisma.pairing.findUnique({
-            where: { id: pairingId },
-            include: { mentees: true }
-        })
+        const pairingRef = adminDb.collection('pairings').doc(pairingId)
+        const snap = await pairingRef.get()
+        if (!snap.exists) return { success: false, error: 'Pairing not found' }
 
-        if (!pairing) {
-            return { success: false, error: 'Pairing not found' }
+        const data = snap.data() as PairingDoc
+        if (data.menteeIds.includes(menteeId)) {
+            return { success: false, error: 'Mentee already in pairing' }
         }
 
-        // Check max mentees (2)
-        if (pairing.mentees.length >= 2) {
-            return { success: false, error: 'Pairing already has maximum 2 mentees' }
-        }
-
-        // Add mentee
-        await prisma.pairingMentee.create({
-            data: {
-                pairingId,
-                menteeId,
-            }
+        await pairingRef.update({
+            menteeIds: [...data.menteeIds, menteeId],
+            updatedAt: Timestamp.now()
         })
 
-        // Update mentee family
-        await prisma.user.update({
-            where: { id: menteeId },
-            data: { familyId: pairing.familyId }
-        })
+        await adminDb.collection('users').doc(menteeId).update({ familyId: data.familyId })
 
         revalidatePath('/admin/pairings')
 
@@ -258,25 +257,23 @@ export async function addMenteeToPairing(pairingId: string, menteeId: string): P
     }
 }
 
-/**
- * Remove a mentee from a pairing (admin only)
- */
 export async function removeMenteeFromPairing(pairingId: string, menteeId: string): Promise<PairingResult> {
-    // Verify admin user
     try {
         await requireAdmin()
-    } catch {
-        return { success: false, error: 'Only admins can modify pairings' }
-    }
 
-    try {
-        // Remove mentee from pairing
-        await prisma.pairingMentee.deleteMany({
-            where: {
-                pairingId,
-                menteeId,
-            }
+        const pairingRef = adminDb.collection('pairings').doc(pairingId)
+        const snap = await pairingRef.get()
+        if (!snap.exists) return { success: false, error: 'Pairing not found' }
+
+        const data = snap.data() as PairingDoc
+        const newMentees = data.menteeIds.filter(id => id !== menteeId)
+
+        await pairingRef.update({
+            menteeIds: newMentees,
+            updatedAt: Timestamp.now()
         })
+
+        await adminDb.collection('users').doc(menteeId).update({ familyId: null })
 
         revalidatePath('/admin/pairings')
 

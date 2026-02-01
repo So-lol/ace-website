@@ -268,6 +268,7 @@ export default function SubmitPage() {
                                             <Checkbox
                                                 id={bonus.id}
                                                 checked={selectedBonuses.includes(bonus.id)}
+                                                onClick={(e) => e.stopPropagation()}
                                                 onCheckedChange={() => toggleBonus(bonus.id)}
                                                 className="mt-0.5"
                                             />

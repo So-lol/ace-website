@@ -10,37 +10,73 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Cat, ArrowLeft, Loader2 } from 'lucide-react'
-import { signUp } from '@/lib/actions/auth'
+import { auth } from '@/lib/firebase'
+import { createUserWithEmailAndPassword, sendEmailVerification, updateProfile } from 'firebase/auth'
 import { toast } from 'sonner'
 
 export default function SignupPage() {
     const router = useRouter()
     const [isLoading, setIsLoading] = useState(false)
 
-    async function handleSubmit(formData: FormData) {
+    async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+        e.preventDefault()
         setIsLoading(true)
 
-        try {
-            const result = await signUp(formData)
+        const formData = new FormData(e.currentTarget)
+        const name = formData.get('name') as string
+        const email = formData.get('email') as string
+        const password = formData.get('password') as string
+        const confirmPassword = formData.get('confirmPassword') as string
 
-            if (result.success) {
-                if (result.redirectTo?.includes('check-email')) {
-                    toast.success('Account created! Check your email to confirm.')
-                    router.push(result.redirectTo)
-                } else {
-                    toast.success('Account created successfully!')
-                    router.push(result.redirectTo || '/dashboard')
-                    router.refresh()
-                }
+        if (!name || !email || !password) {
+            toast.error('All fields are required')
+            setIsLoading(false)
+            return
+        }
+
+        if (password !== confirmPassword) {
+            toast.error('Passwords do not match')
+            setIsLoading(false)
+            return
+        }
+
+        if (password.length < 8) {
+            toast.error('Password must be at least 8 characters')
+            setIsLoading(false)
+            return
+        }
+
+        try {
+            // Create user with Firebase client SDK
+            const userCredential = await createUserWithEmailAndPassword(auth, email.toLowerCase(), password)
+            const user = userCredential.user
+
+            // Update display name
+            await updateProfile(user, { displayName: name })
+
+            // Send verification email
+            await sendEmailVerification(user, {
+                url: `${window.location.origin}/login?message=email-verified`,
+            })
+
+            toast.success('Account created! Please verify your email.')
+            router.push('/verify-email')
+        } catch (error: any) {
+            console.error('Signup error:', error)
+            if (error.code === 'auth/email-already-in-use') {
+                toast.error('This email is already registered. Please sign in.')
+            } else if (error.code === 'auth/invalid-email') {
+                toast.error('Please enter a valid email address.')
+            } else if (error.code === 'auth/weak-password') {
+                toast.error('Password is too weak. Please use a stronger password.')
             } else {
-                toast.error(result.error || 'Failed to create account')
+                toast.error('Failed to create account. Please try again.')
             }
-        } catch (err) {
-            toast.error('An unexpected error occurred')
         } finally {
             setIsLoading(false)
         }
     }
+
 
     return (
         <div className="min-h-screen flex flex-col">
@@ -70,7 +106,7 @@ export default function SignupPage() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <form action={handleSubmit} className="space-y-4">
+                            <form onSubmit={handleSubmit} className="space-y-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="name">Full Name</Label>
                                     <Input

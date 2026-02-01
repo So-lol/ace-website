@@ -39,7 +39,16 @@ function LoginForm() {
         try {
             // Sign in with Firebase client SDK
             const userCredential = await signInWithEmailAndPassword(auth, email.toLowerCase(), password)
-            const idToken = await userCredential.user.getIdToken()
+            const user = userCredential.user
+
+            // Check if email is verified
+            if (!user.emailVerified) {
+                toast.error('Please verify your email address first.')
+                router.push('/verify-email')
+                return
+            }
+
+            const idToken = await user.getIdToken()
 
             // Sync with our database and set session cookie
             const result = await verifyAndSyncUser(idToken)
@@ -113,6 +122,16 @@ function LoginForm() {
                             <div className="text-sm text-green-800 dark:text-green-200">
                                 <p className="font-medium">Password reset email sent!</p>
                                 <p>Check your inbox for a link to reset your password.</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {message === 'email-verified' && (
+                        <div className="mb-6 p-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg flex gap-3">
+                            <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
+                            <div className="text-sm text-green-800 dark:text-green-200">
+                                <p className="font-medium">Email Verified!</p>
+                                <p>Your email has been verified. You can now sign in.</p>
                             </div>
                         </div>
                     )}

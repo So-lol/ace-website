@@ -9,7 +9,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Cat, ArrowLeft, Loader2, Mail } from 'lucide-react'
-import { resetPassword } from '@/lib/actions/auth'
+import { sendPasswordResetEmail } from 'firebase/auth'
+import { auth } from '@/lib/firebase'
 import { toast } from 'sonner'
 
 export default function ForgotPasswordPage() {
@@ -18,18 +19,20 @@ export default function ForgotPasswordPage() {
 
     async function handleSubmit(formData: FormData) {
         setIsLoading(true)
+        const email = formData.get('email') as string
 
         try {
-            const result = await resetPassword(formData)
-
-            if (result.success) {
-                toast.success('Password reset email sent!')
-                router.push(result.redirectTo || '/login?message=reset-email-sent')
+            await sendPasswordResetEmail(auth, email)
+            toast.success('Password reset email sent!')
+            router.push('/login?message=reset-email-sent')
+        } catch (err: any) {
+            console.error(err)
+            if (err.code === 'auth/user-not-found') {
+                // For security, maybe strictly show success? But for UX mostly show error or vague.
+                toast.error('User not found')
             } else {
-                toast.error(result.error || 'Failed to send reset email')
+                toast.error('Failed to send reset email')
             }
-        } catch (err) {
-            toast.error('An unexpected error occurred')
         } finally {
             setIsLoading(false)
         }

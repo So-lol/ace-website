@@ -1,44 +1,51 @@
 'use server'
 
 import { requireAdmin } from '@/lib/auth-helpers'
-import { prisma } from '@/lib/prisma'
+import { adminDb, deleteFirebaseUser } from '@/lib/firebase-admin'
 import { revalidatePath } from 'next/cache'
-import { UserRole } from '@prisma/client'
-import { deleteUser as deleteFirebaseUser } from '@/lib/firebase-admin'
-
-export type UserResult = {
-    success: boolean
-    error?: string
-    userId?: string
-}
+import { UserDoc, FamilyDoc } from '@/types/firestore'
+import { UserWithFamily, UserRole, Family } from '@/types/index'
 
 /**
- * Get all users with optional role filter
+ * Get all users with family relation
  */
-export async function getUsers(role?: UserRole) {
+export async function getUsers(): Promise<UserWithFamily[]> {
     try {
-        const users = await prisma.user.findMany({
-            where: role ? { role } : undefined,
-            include: {
-                family: true,
-                mentorPairings: {
-                    include: {
-                        mentees: { include: { mentee: true } },
-                        family: true,
-                    }
-                },
-                menteePairings: {
-                    include: {
-                        pairing: {
-                            include: {
-                                mentor: true,
-                                family: true,
-                            }
-                        }
-                    }
-                },
-            },
-            orderBy: { name: 'asc' }
+        await requireAdmin()
+
+        // Parallel fetch for users and families to be efficient
+        const [usersSnap, familiesSnap] = await Promise.all([
+            adminDb.collection('users').orderBy('createdAt', 'desc').get(),
+            adminDb.collection('families').get()
+        ])
+
+        // Create Family Map
+        const familyMap = new Map<string, Family>()
+        familiesSnap.forEach(doc => {
+            const fd = doc.data() as FamilyDoc
+            familyMap.set(doc.id, {
+                ...fd,
+                id: doc.id,
+                createdAt: fd.createdAt.toDate(),
+                updatedAt: fd.updatedAt.toDate()
+            })
+        })
+
+        const users = usersSnap.docs.map(doc => {
+            const data = doc.data() as UserDoc
+
+            let family: Family | null = null
+            if (data.familyId && familyMap.has(data.familyId)) {
+                family = familyMap.get(data.familyId)!
+            }
+
+            return {
+                ...data,
+                id: doc.id, // uid
+                family,
+                createdAt: data.createdAt.toDate(),
+                updatedAt: data.updatedAt.toDate(),
+            } as UserWithFamily
         })
 
         return users
@@ -49,190 +56,37 @@ export async function getUsers(role?: UserRole) {
 }
 
 /**
- * Get a single user by ID
- */
-export async function getUser(userId: string) {
-    try {
-        const user = await prisma.user.findUnique({
-            where: { id: userId },
-            include: {
-                family: true,
-                mentorPairings: {
-                    include: {
-                        mentees: { include: { mentee: true } },
-                        family: true,
-                        submissions: true,
-                    }
-                },
-                menteePairings: {
-                    include: {
-                        pairing: {
-                            include: {
-                                mentor: true,
-                                family: true,
-                                submissions: true,
-                            }
-                        }
-                    }
-                },
-            }
-        })
-
-        return user
-    } catch (error) {
-        console.error('Failed to fetch user:', error)
-        return null
-    }
-}
-
-/**
  * Update user role (admin only)
  */
-export async function updateUserRole(userId: string, newRole: UserRole): Promise<UserResult> {
-    // Verify admin user
-    let adminUser
+export async function updateUserRole(userId: string, role: UserRole) {
     try {
-        adminUser = await requireAdmin()
-    } catch {
-        return { success: false, error: 'Only admins can change user roles' }
-    }
+        const admin = await requireAdmin()
 
-    try {
-        // Prevent self-demotion from admin
-        if (userId === adminUser.id && newRole !== 'ADMIN') {
-            return { success: false, error: 'You cannot change your own admin role' }
-        }
-
-        // Update user role
-        await prisma.user.update({
-            where: { id: userId },
-            data: { role: newRole }
-        })
-
-        // Create audit log
-        await prisma.auditLog.create({
-            data: {
-                action: 'UPDATE',
-                entityType: 'User',
-                entityId: userId,
-                actorId: adminUser.id,
-                afterValue: { role: newRole },
-            }
+        await adminDb.collection('users').doc(userId).update({
+            role,
+            updatedAt: new Date()
         })
 
         revalidatePath('/admin/users')
-
-        return { success: true, userId }
+        return { success: true }
     } catch (error) {
-        console.error('Role update error:', error)
-        return { success: false, error: 'Failed to update user role' }
+        console.error('Update role error:', error)
+        return { success: false, error: 'Failed to update role' }
     }
 }
 
 /**
- * Update user's family assignment (admin only)
+ * Delete user (admin only)
  */
-export async function updateUserFamily(userId: string, familyId: string | null): Promise<UserResult> {
-    // Verify admin user
-    let adminUser
+export async function deleteUser(userId: string) {
     try {
-        adminUser = await requireAdmin()
-    } catch {
-        return { success: false, error: 'Only admins can change user families' }
-    }
-
-    try {
-        // Verify family exists if provided
-        if (familyId) {
-            const family = await prisma.family.findUnique({
-                where: { id: familyId }
-            })
-            if (!family) {
-                return { success: false, error: 'Family not found' }
-            }
-        }
-
-        // Update user family
-        await prisma.user.update({
-            where: { id: userId },
-            data: { familyId }
-        })
-
-        // Create audit log
-        await prisma.auditLog.create({
-            data: {
-                action: 'UPDATE',
-                entityType: 'User',
-                entityId: userId,
-                actorId: adminUser.id,
-                afterValue: { familyId },
-            }
-        })
-
+        await requireAdmin()
+        await adminDb.collection('users').doc(userId).delete()
+        await deleteFirebaseUser(userId)
         revalidatePath('/admin/users')
-
-        return { success: true, userId }
+        return { success: true }
     } catch (error) {
-        console.error('Family update error:', error)
-        return { success: false, error: 'Failed to update user family' }
-    }
-}
-
-/**
- * Delete a user (admin only)
- */
-export async function deleteUser(userId: string): Promise<UserResult> {
-    // Verify admin user
-    let adminUser
-    try {
-        adminUser = await requireAdmin()
-    } catch {
-        return { success: false, error: 'Only admins can delete users' }
-    }
-
-    try {
-        // Prevent self-deletion
-        if (userId === adminUser.id) {
-            return { success: false, error: 'You cannot delete your own account' }
-        }
-
-        // Get user before deletion for audit log
-        const userToDelete = await prisma.user.findUnique({
-            where: { id: userId }
-        })
-
-        if (!userToDelete) {
-            return { success: false, error: 'User not found' }
-        }
-
-        // Delete user from database (cascade will handle related records)
-        await prisma.user.delete({
-            where: { id: userId }
-        })
-
-        // Also delete from Firebase Auth
-        try {
-            await deleteFirebaseUser(userId)
-        } catch (firebaseError) {
-            console.warn('Failed to delete Firebase user (may not exist):', firebaseError)
-        }
-
-        // Create audit log
-        await prisma.auditLog.create({
-            data: {
-                action: 'DELETE',
-                entityType: 'User',
-                entityId: userId,
-                actorId: adminUser.id,
-                beforeValue: { email: userToDelete.email, name: userToDelete.name },
-            }
-        })
-
-        revalidatePath('/admin/users')
-
-        return { success: true, userId }
-    } catch (error) {
-        console.error('User deletion error:', error)
+        console.error('Delete user error:', error)
         return { success: false, error: 'Failed to delete user' }
     }
 }

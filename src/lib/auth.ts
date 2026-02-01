@@ -1,63 +1,32 @@
 import { getAuthenticatedUser } from '@/lib/auth-helpers'
-import { prisma } from '@/lib/prisma'
-import { UserRole } from '@prisma/client'
+import { adminDb } from '@/lib/firebase-admin'
 
 /**
- * @deprecated Use getAuthenticatedUser from @/lib/auth-helpers for server actions
- * This file provides backward compatibility for page components
+ * @deprecated Use getAuthenticatedUser from @/lib/auth-helpers
  */
 
 export async function getCurrentUser() {
     const authUser = await getAuthenticatedUser()
+    if (!authUser) return null
 
-    if (!authUser) {
-        return null
-    }
-
-    // Get user from database with all relations
-    const user = await prisma.user.findUnique({
-        where: { email: authUser.email },
-        include: {
-            family: true,
-            mentorPairings: {
-                include: {
-                    mentees: {
-                        include: {
-                            mentee: true
-                        }
-                    },
-                    family: true
-                }
-            },
-            menteePairings: {
-                include: {
-                    pairing: {
-                        include: {
-                            mentor: true,
-                            family: true
-                        }
-                    }
-                }
-            }
-        }
-    })
-
-    return user
+    // We can return the authUser directly as it contains basic profile
+    // Or fetch full relation tree if needed (not supported in new auth-helpers)
+    return authUser
 }
 
 export async function isAdmin() {
-    const user = await getCurrentUser()
-    return user?.role === UserRole.ADMIN
+    const user = await getAuthenticatedUser()
+    return user?.role === 'ADMIN'
 }
 
 export async function isMentor() {
-    const user = await getCurrentUser()
-    return user?.role === UserRole.MENTOR
+    const user = await getAuthenticatedUser()
+    return user?.role === 'MENTOR'
 }
 
 export async function isMentee() {
-    const user = await getCurrentUser()
-    return user?.role === UserRole.MENTEE
+    const user = await getAuthenticatedUser()
+    return user?.role === 'MENTEE'
 }
 
 export { getAuthenticatedUser as getSession }

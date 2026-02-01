@@ -55,14 +55,14 @@ function PairingCard({ pairing }: { pairing: PairingWithRelations }) {
 
                             {/* Mentees */}
                             <div className="flex items-center gap-2">
-                                {pairing.mentees.map((pm, i) => (
-                                    <div key={pm.mentee.id} className="flex items-center gap-2">
+                                {pairing.mentees.map((mentee, i) => (
+                                    <div key={mentee.id} className="flex items-center gap-2">
                                         {i > 0 && <span className="text-muted-foreground">&</span>}
                                         <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
                                             <Users className="w-5 h-5 text-muted-foreground" />
                                         </div>
                                         <div>
-                                            <p className="font-medium text-sm">{pm.mentee.name}</p>
+                                            <p className="font-medium text-sm">{mentee.name}</p>
                                             <p className="text-xs text-muted-foreground">Mentee</p>
                                         </div>
                                     </div>

@@ -1,73 +1,54 @@
-'use server'
+import { cookies } from 'next/headers'
+import { verifyIdToken, adminDb } from '@/lib/firebase-admin'
+import { UserRole } from '@/types/index'
 
-import { cookies, headers } from 'next/headers'
-import { verifyIdToken } from '@/lib/firebase-admin'
-import { prisma } from '@/lib/prisma'
-
+// Define User Interface matching Firestore schema
 export interface AuthenticatedUser {
-    id: string
+    id: string    // Firebase UID
     email: string
     name: string
-    role: string
-    firebaseUid: string
+    role: 'ADMIN' | 'MENTOR' | 'MENTEE'
+    familyId?: string
+    avatarUrl?: string
 }
 
-/**
- * Get the authenticated user from the request
- * Checks both Authorization header and session cookie
- */
 export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> {
+    const cookieStore = await cookies()
+    const sessionCookie = cookieStore.get('firebase-session')?.value || null
+
+    if (!sessionCookie) return null
+
     try {
-        // Check Authorization header first
-        const headersList = await headers()
-        const authHeader = headersList.get('Authorization')
-        let idToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+        // 1. Verify Session/Token
+        const { user: firebaseAuthUser, error } = await verifyIdToken(sessionCookie)
+        if (error || !firebaseAuthUser) return null
 
-        // Fall back to session cookie
-        if (!idToken) {
-            const cookieStore = await cookies()
-            idToken = cookieStore.get('firebase-session')?.value || null
-        }
+        // 2. Fetch User Data from Firestore
+        const userDoc = await adminDb.collection('users').doc(firebaseAuthUser.uid).get()
 
-        if (!idToken) {
+        if (!userDoc.exists) {
+            console.warn(`User ${firebaseAuthUser.uid} authenticated but no Firestore doc found.`)
+            // Fallback: If verifying simple auth (no role required), could return basic info
+            // But usually we want the DB profile.
             return null
         }
 
-        // Verify the token
-        const { user: firebaseUser, error } = await verifyIdToken(idToken)
-
-        if (error || !firebaseUser || !firebaseUser.email) {
-            return null
-        }
-
-        // Get user from database
-        const dbUser = await prisma.user.findUnique({
-            where: { email: firebaseUser.email },
-            select: {
-                id: true,
-                email: true,
-                name: true,
-                role: true,
-            }
-        })
-
-        if (!dbUser) {
-            return null
-        }
+        const userData = userDoc.data()
 
         return {
-            ...dbUser,
-            firebaseUid: firebaseUser.uid,
+            id: firebaseAuthUser.uid,
+            email: firebaseAuthUser.email || '',
+            name: userData?.name || firebaseAuthUser.name || 'Unknown',
+            role: userData?.role || 'MENTEE',
+            familyId: userData?.familyId,
+            avatarUrl: userData?.avatarUrl,
         }
-    } catch (error) {
-        console.error('Error getting authenticated user:', error)
+    } catch (err) {
+        console.error('Auth helper error:', err)
         return null
     }
 }
 
-/**
- * Require authentication - throws if not authenticated
- */
 export async function requireAuth(): Promise<AuthenticatedUser> {
     const user = await getAuthenticatedUser()
     if (!user) {
@@ -76,9 +57,6 @@ export async function requireAuth(): Promise<AuthenticatedUser> {
     return user
 }
 
-/**
- * Require admin role - throws if not admin
- */
 export async function requireAdmin(): Promise<AuthenticatedUser> {
     const user = await requireAuth()
     if (user.role !== 'ADMIN') {

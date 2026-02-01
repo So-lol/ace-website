@@ -1,28 +1,21 @@
 import { getAuthenticatedUser } from '@/lib/auth-helpers'
-import { prisma } from '@/lib/prisma'
 import { Navbar } from './navbar'
 
 export async function NavbarWithAuth() {
+    // getAuthenticatedUser now returns data from Firestore (via helpers)
     const authUser = await getAuthenticatedUser()
+
+    // Navbar expects { name, email, role }
+    // authUser matches this shape (AuthenticatedUser interface)
+    // We map it to handle potential nulls for specific fields
 
     let user = null
 
-    if (authUser?.email) {
-        const dbUser = await prisma.user.findUnique({
-            where: { email: authUser.email },
-            select: {
-                name: true,
-                email: true,
-                role: true,
-            }
-        })
-
-        if (dbUser) {
-            user = {
-                name: dbUser.name,
-                email: dbUser.email,
-                role: dbUser.role,
-            }
+    if (authUser) {
+        user = {
+            name: authUser.name,
+            email: authUser.email,
+            role: authUser.role,
         }
     }
 
