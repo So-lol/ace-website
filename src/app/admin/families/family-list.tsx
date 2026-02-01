@@ -23,7 +23,10 @@ import {
     Archive,
     Trash2,
     RotateCcw,
-    Loader2
+    Loader2,
+    Crown,
+    UserPlus,
+    X
 } from 'lucide-react'
 import {
     DropdownMenu,
@@ -41,22 +44,54 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { FamilyDoc } from '@/types/firestore'
 import { createFamily, updateFamily, deleteFamily } from '@/lib/actions/families'
 import { toast } from 'sonner'
 
-interface FamilyListProps {
-    families: (FamilyDoc & { id: string, memberCount: number })[]
+interface User {
+    id: string
+    name: string
+    email: string
+    role: string
 }
 
-export default function FamilyList({ families }: FamilyListProps) {
+interface Family {
+    id: string
+    name: string
+    isArchived: boolean
+    memberIds: string[]
+    memberCount: number
+    familyHeadId: string | null
+    familyHeadName: string | null
+    auntUncleIds: string[]
+    auntUncleNames: string[]
+    createdAt: Date
+    updatedAt: Date
+}
+
+interface FamilyListProps {
+    families: Family[]
+    users: User[]
+}
+
+export default function FamilyList({ families, users }: FamilyListProps) {
     const [searchTerm, setSearchTerm] = useState('')
     const [isCreateOpen, setIsCreateOpen] = useState(false)
     const [isEditOpen, setIsEditOpen] = useState(false)
+    const [isRolesOpen, setIsRolesOpen] = useState(false)
     const [isLoading, setIsLoading] = useState(false)
-    const [editingFamily, setEditingFamily] = useState<FamilyDoc & { id: string } | null>(null)
+    const [editingFamily, setEditingFamily] = useState<Family | null>(null)
     const [name, setName] = useState('')
+    const [selectedFamilyHeadId, setSelectedFamilyHeadId] = useState<string>('none')
+    const [selectedAuntUncleIds, setSelectedAuntUncleIds] = useState<string[]>([])
 
     const filteredFamilies = families.filter(f =>
         f.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -68,12 +103,31 @@ export default function FamilyList({ families }: FamilyListProps) {
     const resetForm = () => {
         setName('')
         setEditingFamily(null)
+        setSelectedFamilyHeadId('none')
+        setSelectedAuntUncleIds([])
     }
 
-    const openEdit = (family: FamilyDoc & { id: string }) => {
+    const openEdit = (family: Family) => {
         setEditingFamily(family)
         setName(family.name)
         setIsEditOpen(true)
+    }
+
+    const openRolesDialog = (family: Family) => {
+        setEditingFamily(family)
+        setSelectedFamilyHeadId(family.familyHeadId || 'none')
+        setSelectedAuntUncleIds(family.auntUncleIds || [])
+        setIsRolesOpen(true)
+    }
+
+    const addAuntUncle = (userId: string) => {
+        if (userId && userId !== 'none' && !selectedAuntUncleIds.includes(userId)) {
+            setSelectedAuntUncleIds([...selectedAuntUncleIds, userId])
+        }
+    }
+
+    const removeAuntUncle = (userId: string) => {
+        setSelectedAuntUncleIds(selectedAuntUncleIds.filter(id => id !== userId))
     }
 
     const handleCreate = async (e: React.FormEvent) => {
@@ -115,7 +169,29 @@ export default function FamilyList({ families }: FamilyListProps) {
         }
     }
 
-    const toggleArchive = async (family: FamilyDoc & { id: string }) => {
+    const handleSaveRoles = async () => {
+        if (!editingFamily) return
+        setIsLoading(true)
+        try {
+            const result = await updateFamily(editingFamily.id, {
+                familyHeadId: selectedFamilyHeadId === 'none' ? null : selectedFamilyHeadId,
+                auntUncleIds: selectedAuntUncleIds
+            })
+            if (result.success) {
+                toast.success('Family roles updated')
+                setIsRolesOpen(false)
+                resetForm()
+            } else {
+                toast.error(result.error || 'Failed to update roles')
+            }
+        } catch (error) {
+            toast.error('An error occurred')
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
+    const toggleArchive = async (family: Family) => {
         try {
             const result = await updateFamily(family.id, { isArchived: !family.isArchived })
             if (result.success) {
@@ -226,6 +302,90 @@ export default function FamilyList({ families }: FamilyListProps) {
                         </form>
                     </DialogContent>
                 </Dialog>
+
+                {/* Roles Dialog */}
+                <Dialog open={isRolesOpen} onOpenChange={setIsRolesOpen}>
+                    <DialogContent className="sm:max-w-lg">
+                        <DialogHeader>
+                            <DialogTitle className="flex items-center gap-2">
+                                <Crown className="w-5 h-5 text-amber-500" />
+                                Manage Family Roles
+                            </DialogTitle>
+                            <DialogDescription>
+                                Assign a family head and aunts/uncles to {editingFamily?.name}
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-6 py-4">
+                            {/* Family Head */}
+                            <div className="space-y-2">
+                                <Label>Family Head</Label>
+                                <Select value={selectedFamilyHeadId} onValueChange={setSelectedFamilyHeadId}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select family head" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">No family head</SelectItem>
+                                        {users.map((user) => (
+                                            <SelectItem key={user.id} value={user.id}>
+                                                {user.name} ({user.email})
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Aunts/Uncles */}
+                            <div className="space-y-2">
+                                <Label>Aunts/Uncles</Label>
+                                <div className="flex gap-2">
+                                    <Select onValueChange={addAuntUncle}>
+                                        <SelectTrigger className="flex-1">
+                                            <SelectValue placeholder="Add aunt/uncle" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {users
+                                                .filter(u => !selectedAuntUncleIds.includes(u.id) && u.id !== selectedFamilyHeadId)
+                                                .map((user) => (
+                                                    <SelectItem key={user.id} value={user.id}>
+                                                        {user.name} ({user.email})
+                                                    </SelectItem>
+                                                ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                {selectedAuntUncleIds.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                        {selectedAuntUncleIds.map(id => {
+                                            const user = users.find(u => u.id === id)
+                                            return (
+                                                <Badge key={id} variant="secondary" className="gap-1 pr-1">
+                                                    {user?.name || 'Unknown'}
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon-xs"
+                                                        className="h-4 w-4 hover:bg-destructive/20"
+                                                        onClick={() => removeAuntUncle(id)}
+                                                    >
+                                                        <X className="w-3 h-3" />
+                                                    </Button>
+                                                </Badge>
+                                            )
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setIsRolesOpen(false)}>
+                                Cancel
+                            </Button>
+                            <Button onClick={handleSaveRoles} disabled={isLoading}>
+                                {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                                Save Roles
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </div>
 
             {/* Families Table */}
@@ -235,6 +395,7 @@ export default function FamilyList({ families }: FamilyListProps) {
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Family Name</TableHead>
+                                <TableHead>Leadership</TableHead>
                                 <TableHead className="text-center">Members</TableHead>
                                 <TableHead className="text-center">Points</TableHead>
                                 <TableHead className="text-center">Status</TableHead>
@@ -244,7 +405,7 @@ export default function FamilyList({ families }: FamilyListProps) {
                         <TableBody>
                             {activeFamilies.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                                         No active families found.
                                     </TableCell>
                                 </TableRow>
@@ -252,6 +413,24 @@ export default function FamilyList({ families }: FamilyListProps) {
                                 activeFamilies.map((family) => (
                                     <TableRow key={family.id}>
                                         <TableCell className="font-medium">{family.name}</TableCell>
+                                        <TableCell>
+                                            <div className="space-y-1">
+                                                {family.familyHeadName && (
+                                                    <div className="flex items-center gap-1 text-sm">
+                                                        <Crown className="w-3 h-3 text-amber-500" />
+                                                        <span>{family.familyHeadName}</span>
+                                                    </div>
+                                                )}
+                                                {family.auntUncleNames.length > 0 && (
+                                                    <div className="text-xs text-muted-foreground">
+                                                        {family.auntUncleNames.length} aunt/uncle{family.auntUncleNames.length > 1 ? 's' : ''}
+                                                    </div>
+                                                )}
+                                                {!family.familyHeadName && family.auntUncleNames.length === 0 && (
+                                                    <span className="text-xs text-muted-foreground">Not assigned</span>
+                                                )}
+                                            </div>
+                                        </TableCell>
                                         <TableCell className="text-center">
                                             <div className="flex items-center justify-center gap-1">
                                                 <Users className="w-4 h-4 text-muted-foreground" />
@@ -281,6 +460,10 @@ export default function FamilyList({ families }: FamilyListProps) {
                                                     <DropdownMenuItem onClick={() => openEdit(family)}>
                                                         <Pencil className="w-4 h-4 mr-2" />
                                                         Edit
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => openRolesDialog(family)}>
+                                                        <Crown className="w-4 h-4 mr-2" />
+                                                        Manage Roles
                                                     </DropdownMenuItem>
                                                     <DropdownMenuSeparator />
                                                     <DropdownMenuItem className="text-amber-600" onClick={() => toggleArchive(family)}>

@@ -16,7 +16,9 @@ import {
     Calendar
 } from 'lucide-react'
 import { getUsers } from '@/lib/actions/users'
+import { getFamilies } from '@/lib/actions/families'
 import { formatDistanceToNow } from 'date-fns'
+import AddUserForm from './add-user-form'
 
 export const metadata: Metadata = {
     title: 'User Management',
@@ -94,7 +96,10 @@ function UserCard({ user }: { user: UserWithRelations }) {
 }
 
 export default async function UsersPage() {
-    const users = await getUsers()
+    const [users, families] = await Promise.all([
+        getUsers(),
+        getFamilies()
+    ])
 
     const admins = users.filter(u => u.role === 'ADMIN')
     const mentors = users.filter(u => u.role === 'MENTOR')
@@ -158,10 +163,7 @@ export default async function UsersPage() {
                             className="pl-10"
                         />
                     </div>
-                    <Button className="gap-2">
-                        <UserCog className="w-4 h-4" />
-                        Add User
-                    </Button>
+                    <AddUserForm families={families} />
                 </div>
 
                 {/* Tabs */}

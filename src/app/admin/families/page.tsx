@@ -1,6 +1,7 @@
 import { Metadata } from 'next'
 import { AdminHeader } from '@/components/admin'
 import { getFamilies } from '@/lib/actions/families'
+import { getUsers } from '@/lib/actions/users'
 import FamilyList from './family-list'
 
 export const metadata: Metadata = {
@@ -9,12 +10,15 @@ export const metadata: Metadata = {
 }
 
 export default async function FamiliesPage() {
-    const families = await getFamilies(true) // true = include archived
+    const [families, users] = await Promise.all([
+        getFamilies(true), // true = include archived
+        getUsers()
+    ])
 
     return (
         <>
             <AdminHeader title="Families" />
-            <FamilyList families={families} />
+            <FamilyList families={families} users={users} />
         </>
     )
 }

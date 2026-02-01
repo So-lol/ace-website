@@ -17,6 +17,35 @@ export async function getFamilies(includeArchived = false) {
         }
 
         const snapshot = await query.get()
+
+        // Collect all user IDs we need to fetch
+        const userIds = new Set<string>()
+        snapshot.docs.forEach(doc => {
+            const data = doc.data()
+            if (data.familyHeadId) userIds.add(data.familyHeadId)
+            if (data.auntUncleIds) data.auntUncleIds.forEach((id: string) => userIds.add(id))
+        })
+
+        // Fetch all users in one batch (if any)
+        const userMap = new Map<string, string>()
+        if (userIds.size > 0) {
+            const userIdsArray = Array.from(userIds)
+            // Firestore 'in' query supports up to 30 items
+            const chunks = []
+            for (let i = 0; i < userIdsArray.length; i += 30) {
+                chunks.push(userIdsArray.slice(i, i + 30))
+            }
+            for (const chunk of chunks) {
+                const usersSnap = await adminDb.collection('users')
+                    .where('uid', 'in', chunk)
+                    .get()
+                usersSnap.docs.forEach(doc => {
+                    const userData = doc.data()
+                    userMap.set(doc.id, userData.name || 'Unknown')
+                })
+            }
+        }
+
         const families = snapshot.docs.map(doc => {
             const data = doc.data()
             return {
@@ -25,7 +54,10 @@ export async function getFamilies(includeArchived = false) {
                 isArchived: data.isArchived || false,
                 memberIds: data.memberIds || [],
                 memberCount: data.memberIds?.length || 0,
-                // Serialize timestamps to plain dates
+                familyHeadId: data.familyHeadId || null,
+                familyHeadName: data.familyHeadId ? userMap.get(data.familyHeadId) || null : null,
+                auntUncleIds: data.auntUncleIds || [],
+                auntUncleNames: (data.auntUncleIds || []).map((id: string) => userMap.get(id) || 'Unknown'),
                 createdAt: data.createdAt?.toDate?.() || new Date(),
                 updatedAt: data.updatedAt?.toDate?.() || new Date()
             }

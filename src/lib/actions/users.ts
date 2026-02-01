@@ -1,10 +1,81 @@
 'use server'
 
 import { requireAdmin } from '@/lib/auth-helpers'
-import { adminDb, deleteFirebaseUser } from '@/lib/firebase-admin'
+import { adminDb, deleteFirebaseUser, createFirebaseUser } from '@/lib/firebase-admin'
 import { revalidatePath } from 'next/cache'
 import { UserDoc, FamilyDoc } from '@/types/firestore'
 import { UserWithFamily, UserRole, Family } from '@/types/index'
+import { Timestamp } from 'firebase-admin/firestore'
+
+interface CreateUserInput {
+    name: string
+    email: string
+    password: string
+    role: UserRole
+    familyId?: string
+}
+
+/**
+ * Create a new user (admin only)
+ */
+export async function createUser(input: CreateUserInput) {
+    try {
+        await requireAdmin()
+
+        if (!input.name || !input.email || !input.password) {
+            return { success: false, error: 'Name, email, and password are required' }
+        }
+
+        if (input.password.length < 6) {
+            return { success: false, error: 'Password must be at least 6 characters' }
+        }
+
+        // Create Firebase Auth user
+        const result = await createFirebaseUser(input.email, input.password, input.name)
+
+        if (!result.user) {
+            return { success: false, error: 'Failed to create user in Firebase Auth' }
+        }
+
+        const uid = result.user.uid
+
+        // Create Firestore user document
+        const newUser: Omit<UserDoc, 'id'> = {
+            uid,
+            email: input.email,
+            name: input.name,
+            role: input.role || 'MENTEE',
+            familyId: input.familyId || null,
+            avatarUrl: null,
+            createdAt: Timestamp.now(),
+            updatedAt: Timestamp.now()
+        }
+
+        await adminDb.collection('users').doc(uid).set(newUser)
+
+        // If family assigned, add user to family's memberIds
+        if (input.familyId) {
+            const familyRef = adminDb.collection('families').doc(input.familyId)
+            const familySnap = await familyRef.get()
+            if (familySnap.exists) {
+                const familyData = familySnap.data()
+                const memberIds = familyData?.memberIds || []
+                if (!memberIds.includes(uid)) {
+                    await familyRef.update({
+                        memberIds: [...memberIds, uid],
+                        updatedAt: Timestamp.now()
+                    })
+                }
+            }
+        }
+
+        revalidatePath('/admin/users')
+        return { success: true, userId: uid }
+    } catch (error: any) {
+        console.error('Create user error:', error)
+        return { success: false, error: error.message || 'Failed to create user' }
+    }
+}
 
 /**
  * Get all users with family relation
