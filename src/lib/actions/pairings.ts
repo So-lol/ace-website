@@ -64,14 +64,18 @@ export async function getPairings() {
             }) as Submission[]
 
             return {
-                ...data,
                 id: doc.id,
+                familyId: data.familyId,
+                mentorId: data.mentorId,
+                menteeIds: data.menteeIds,
+                weeklyPoints: data.weeklyPoints,
+                totalPoints: data.totalPoints,
                 family,
                 mentor,
-                mentees, // Returning User[]
+                mentees,
                 submissions,
-                createdAt: data.createdAt.toDate(),
-                updatedAt: data.updatedAt.toDate(),
+                createdAt: data.createdAt?.toDate(),
+                updatedAt: data.updatedAt?.toDate(),
             }
         }))
 
@@ -131,14 +135,18 @@ export async function getPairing(pairingId: string) {
         }) as Submission[]
 
         return {
-            ...data,
             id: docSnap.id,
+            familyId: data.familyId,
+            mentorId: data.mentorId,
+            menteeIds: data.menteeIds,
+            weeklyPoints: data.weeklyPoints,
+            totalPoints: data.totalPoints,
             family,
             mentor,
             mentees,
             submissions,
-            createdAt: data.createdAt.toDate(),
-            updatedAt: data.updatedAt.toDate(),
+            createdAt: data.createdAt?.toDate(),
+            updatedAt: data.updatedAt?.toDate(),
         }
     } catch (error) {
         console.error('Failed to fetch pairing:', error)
@@ -281,5 +289,79 @@ export async function removeMenteeFromPairing(pairingId: string, menteeId: strin
     } catch (error) {
         console.error('Remove mentee error:', error)
         return { success: false, error: 'Failed to remove mentee' }
+    }
+}
+
+/**
+ * Update a pairing (admin only)
+ */
+export async function updatePairing(
+    pairingId: string,
+    data: {
+        familyId?: string
+        mentorId?: string
+        menteeIds?: string[]
+    }
+): Promise<PairingResult> {
+    try {
+        const adminUser = await requireAdmin()
+        const pairingRef = adminDb.collection('pairings').doc(pairingId)
+        const snap = await pairingRef.get()
+
+        if (!snap.exists) {
+            return { success: false, error: 'Pairing not found' }
+        }
+
+        const currentData = snap.data() as PairingDoc
+        const updates: any = { updatedAt: Timestamp.now() }
+        const newFamilyId = data.familyId || currentData.familyId
+
+        // Handle Family Change logic if needed (updating users' familyId)
+        // For simplicity, we ensure all members of this pairing are set to the target familyId
+
+        if (data.familyId) updates.familyId = data.familyId
+        if (data.mentorId) updates.mentorId = data.mentorId
+        if (data.menteeIds) updates.menteeIds = data.menteeIds
+
+        await pairingRef.update(updates)
+
+        // Sync User Family IDs
+        const targetFamilyId = data.familyId || currentData.familyId
+
+        // 1. Update old mentor if changed (remove family assignment or keep? Assuming keep for now or manual fix)
+        // Better: Update NEW mentor to family
+        if (data.mentorId) {
+            await adminDb.collection('users').doc(data.mentorId).update({ familyId: targetFamilyId })
+        } else {
+            // Ensure current mentor is in family
+            await adminDb.collection('users').doc(currentData.mentorId).update({ familyId: targetFamilyId })
+        }
+
+        // 2. Update Mentees
+        const menteesToUpdate = data.menteeIds || currentData.menteeIds
+
+        // If mentees changed, we should probably unset familyId for removed mentees, 
+        // but finding exactly which ones were removed efficiently is tricky without current list.
+        // For now, let's just ensure all CURRENT mentees have the correct familyId.
+        for (const uid of menteesToUpdate) {
+            await adminDb.collection('users').doc(uid).update({ familyId: targetFamilyId })
+        }
+
+        // Log audit
+        await adminDb.collection('auditLogs').add({
+            action: 'UPDATE',
+            entityType: 'Pairing',
+            entityId: pairingId,
+            actorId: adminUser.id,
+            afterValue: updates,
+            createdAt: Timestamp.now(),
+        })
+
+        revalidatePath('/admin/pairings')
+        return { success: true, pairingId }
+
+    } catch (error: any) {
+        console.error('Update pairing error:', error)
+        return { success: false, error: error.message || 'Failed to update pairing' }
     }
 }

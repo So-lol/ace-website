@@ -18,6 +18,14 @@ import {
     X
 } from 'lucide-react'
 import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Pencil } from 'lucide-react'
+import {
     Dialog,
     DialogContent,
     DialogDescription,
@@ -36,7 +44,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { toast } from 'sonner'
-import { createPairing, deletePairing } from '@/lib/actions/pairings'
+import { createPairing, deletePairing, updatePairing } from '@/lib/actions/pairings'
 import { useRouter } from 'next/navigation'
 
 interface PairingListProps {
@@ -49,12 +57,14 @@ export default function PairingList({ pairings, families, users }: PairingListPr
     const router = useRouter()
     const [searchTerm, setSearchTerm] = useState('')
     const [isCreateOpen, setIsCreateOpen] = useState(false)
+    const [isEditOpen, setIsEditOpen] = useState(false)
     const [isLoading, setIsLoading] = useState(false)
 
     // Form State
     const [selectedFamilyId, setSelectedFamilyId] = useState<string>('')
     const [selectedMentorId, setSelectedMentorId] = useState<string>('')
     const [selectedMenteeIds, setSelectedMenteeIds] = useState<string[]>([])
+    const [editingPairingId, setEditingPairingId] = useState<string | null>(null)
 
     const filteredPairings = pairings.filter(p =>
         p.mentor?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -75,6 +85,15 @@ export default function PairingList({ pairings, families, users }: PairingListPr
         setSelectedFamilyId('')
         setSelectedMentorId('')
         setSelectedMenteeIds([])
+        setEditingPairingId(null)
+    }
+
+    const openEdit = (pairing: any) => {
+        setEditingPairingId(pairing.id)
+        setSelectedFamilyId(pairing.familyId)
+        setSelectedMentorId(pairing.mentorId)
+        setSelectedMenteeIds(pairing.menteeIds || [])
+        setIsEditOpen(true)
     }
 
     const handleCreate = async (e: React.FormEvent) => {
@@ -93,6 +112,31 @@ export default function PairingList({ pairings, families, users }: PairingListPr
                 resetForm()
             } else {
                 toast.error(result.error || 'Failed to create pairing')
+            }
+        } catch (error) {
+            toast.error('An error occurred')
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
+    const handleUpdate = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!editingPairingId || !selectedFamilyId || !selectedMentorId) return
+
+        setIsLoading(true)
+        try {
+            const result = await updatePairing(editingPairingId, {
+                familyId: selectedFamilyId,
+                mentorId: selectedMentorId,
+                menteeIds: selectedMenteeIds
+            })
+            if (result.success) {
+                toast.success('Pairing updated')
+                setIsEditOpen(false)
+                resetForm()
+            } else {
+                toast.error(result.error || 'Failed to update pairing')
             }
         } catch (error) {
             toast.error('An error occurred')
@@ -123,9 +167,25 @@ export default function PairingList({ pairings, families, users }: PairingListPr
         }
     }
 
-    // Filter available mentors/mentees based on existing assignments could be added here
-    // For now, list all users to allow re-assignment flexibility
-    const sortedUsers = [...users].sort((a, b) => a.name.localeCompare(b.name))
+    // Get all mentee IDs already assigned to pairings (excluding current editing pairing mentees)
+    const assignedMenteeIds = new Set<string>()
+    pairings.forEach(pairing => {
+        // Skip current editing pairing from exclusion check logic
+        if (editingPairingId && pairing.id === editingPairingId) return
+
+        if (pairing.menteeIds) {
+            pairing.menteeIds.forEach((id: string) => assignedMenteeIds.add(id))
+        }
+    })
+
+    // Filter users by role and availability
+    const availableMentors = users
+        .filter(u => u.role === 'MENTOR')
+        .sort((a, b) => a.name.localeCompare(b.name))
+
+    const availableMentees = users
+        .filter(u => u.role === 'MENTEE' && !assignedMenteeIds.has(u.id))
+        .sort((a, b) => a.name.localeCompare(b.name))
 
     return (
         <div className="p-6">
@@ -204,7 +264,7 @@ export default function PairingList({ pairings, families, users }: PairingListPr
                                             <SelectValue placeholder="Select a mentor" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {sortedUsers.map(u => (
+                                            {availableMentors.map((u: any) => (
                                                 <SelectItem key={u.id} value={u.id}>
                                                     {u.name} ({u.email})
                                                 </SelectItem>
@@ -217,21 +277,25 @@ export default function PairingList({ pairings, families, users }: PairingListPr
                                 <div className="space-y-2">
                                     <Label>Mentees</Label>
                                     <div className="border rounded-md p-4 max-h-60 overflow-y-auto space-y-2">
-                                        {sortedUsers.filter(u => u.id !== selectedMentorId).map(u => (
-                                            <div key={u.id} className="flex items-center space-x-2">
-                                                <Checkbox
-                                                    id={`mentee-${u.id}`}
-                                                    checked={selectedMenteeIds.includes(u.id)}
-                                                    onCheckedChange={() => toggleMenteeSelection(u.id)}
-                                                />
-                                                <label
-                                                    htmlFor={`mentee-${u.id}`}
-                                                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                                                >
-                                                    {u.name} <span className="text-muted-foreground text-xs">({u.email})</span>
-                                                </label>
-                                            </div>
-                                        ))}
+                                        {availableMentees.length === 0 ? (
+                                            <p className="text-sm text-muted-foreground text-center py-4">All mentees have been assigned to pairings</p>
+                                        ) : (
+                                            availableMentees.map((u: any) => (
+                                                <div key={u.id} className="flex items-center space-x-2">
+                                                    <Checkbox
+                                                        id={`mentee-${u.id}`}
+                                                        checked={selectedMenteeIds.includes(u.id)}
+                                                        onCheckedChange={() => toggleMenteeSelection(u.id)}
+                                                    />
+                                                    <label
+                                                        htmlFor={`mentee-${u.id}`}
+                                                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                                                    >
+                                                        {u.name} <span className="text-muted-foreground text-xs">({u.email})</span>
+                                                    </label>
+                                                </div>
+                                            ))
+                                        )}
                                     </div>
                                     <p className="text-xs text-muted-foreground">
                                         Selected: {selectedMenteeIds.length} users
@@ -245,6 +309,99 @@ export default function PairingList({ pairings, families, users }: PairingListPr
                                 <Button type="submit" disabled={isLoading}>
                                     {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                                     Create Pairing
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Edit Pairing Dialog */}
+                <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+                    <DialogContent className="max-w-2xl">
+                        <DialogHeader>
+                            <DialogTitle>Edit Pairing</DialogTitle>
+                            <DialogDescription>
+                                Update family assignment, mentor, or mentees.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <form onSubmit={handleUpdate}>
+                            <div className="space-y-4 py-4">
+                                {/* Family Selection */}
+                                <div className="space-y-2">
+                                    <Label>Family</Label>
+                                    <Select value={selectedFamilyId} onValueChange={setSelectedFamilyId} required>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select a family" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {families.map(f => (
+                                                <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                {/* Mentor Selection */}
+                                <div className="space-y-2">
+                                    <Label>Mentor</Label>
+                                    <Select value={selectedMentorId} onValueChange={setSelectedMentorId} required>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select a mentor" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {/* Include current mentor even if not in 'availableMentors' check strictly? 
+                                                Actually availableMentors logic covers all mentors. */}
+                                            {availableMentors.map((u: any) => (
+                                                <SelectItem key={u.id} value={u.id}>
+                                                    {u.name} ({u.email})
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                {/* Mentees Selection */}
+                                <div className="space-y-2">
+                                    <Label>Mentees</Label>
+                                    <div className="border rounded-md p-4 max-h-60 overflow-y-auto space-y-2">
+                                        {availableMentees.map((u: any) => (
+                                            <div key={u.id} className="flex items-center space-x-2">
+                                                <Checkbox
+                                                    id={`edit-mentee-${u.id}`}
+                                                    checked={selectedMenteeIds.includes(u.id)}
+                                                    onCheckedChange={() => toggleMenteeSelection(u.id)}
+                                                />
+                                                <label
+                                                    htmlFor={`edit-mentee-${u.id}`}
+                                                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                                                >
+                                                    {u.name} <span className="text-muted-foreground text-xs">({u.email})</span>
+                                                </label>
+                                            </div>
+                                        ))}
+                                        {availableMentees.length === 0 && (
+                                            <p className="text-sm text-muted-foreground text-center">No other available mentees.</p>
+                                        )}
+                                        {/* Show selected mentees who might not be in 'available' list (currently handled by exclusion logic) 
+                                            Wait, availableMentees logic excludes assigned. But for EDITING, 
+                                            we need to see the currently assigned mentees + available ones. 
+                                            The exclusion logic `!assignedMenteeIds.has(u.id)` skips assigned.
+                                            But `assignedMenteeIds` calculation has a bypass for `editingPairingId`.
+                                            So currently assigned mentees WILL be in `availableMentees`. Correct.
+                                        */}
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                        Selected: {selectedMenteeIds.length} users
+                                    </p>
+                                </div>
+                            </div>
+                            <DialogFooter>
+                                <Button type="button" variant="outline" onClick={() => setIsEditOpen(false)}>
+                                    Cancel
+                                </Button>
+                                <Button type="submit" disabled={isLoading}>
+                                    {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                                    Save Changes
                                 </Button>
                             </DialogFooter>
                         </form>
@@ -316,14 +473,24 @@ export default function PairingList({ pairings, families, users }: PairingListPr
                                                 </div>
                                             </div>
 
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="text-muted-foreground hover:text-destructive"
-                                                onClick={() => handleDelete(pairing.id)}
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </Button>
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button variant="ghost" size="icon">
+                                                        <MoreHorizontal className="w-4 h-4" />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    <DropdownMenuItem onClick={() => openEdit(pairing)}>
+                                                        <Pencil className="w-4 h-4 mr-2" />
+                                                        Edit
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuSeparator />
+                                                    <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(pairing.id)}>
+                                                        <Trash2 className="w-4 h-4 mr-2" />
+                                                        Delete
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
                                         </div>
                                     </CardContent>
                                 </Card>
