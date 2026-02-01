@@ -5,23 +5,32 @@ import { getAuth, Auth } from 'firebase-admin/auth'
 import { getStorage, Storage } from 'firebase-admin/storage'
 import { getFirestore, Firestore } from 'firebase-admin/firestore'
 
-// Initialize Firebase Admin SDK
-function initFirebaseAdmin(): { adminAuth: Auth; adminStorage: Storage; adminDb: Firestore; app: App } {
-    const apps = getApps()
+// Lazy initialization variables
+let app: App | undefined
+let authInstance: Auth | undefined
+let storageInstance: Storage | undefined
+let dbInstance: Firestore | undefined
 
-    // Determine configuration
-    let app: App
+function ensureInitialized() {
+    if (app) return
+
+    const apps = getApps()
 
     if (apps.length > 0) {
         app = apps[0]
     } else {
         const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID
         const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL
-        // Handle escaped newlines in private key
         const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, '\n')
 
         if (!projectId || !clientEmail || !privateKey) {
-            throw new Error('Missing Firebase Admin credentials in environment variables')
+            // Detailed error for better debugging
+            const missing = []
+            if (!projectId) missing.push('FIREBASE_ADMIN_PROJECT_ID')
+            if (!clientEmail) missing.push('FIREBASE_ADMIN_CLIENT_EMAIL')
+            if (!privateKey) missing.push('FIREBASE_ADMIN_PRIVATE_KEY')
+
+            throw new Error(`Missing Firebase Admin credentials in environment variables: ${missing.join(', ')}`)
         }
 
         app = initializeApp({
@@ -34,18 +43,32 @@ function initFirebaseAdmin(): { adminAuth: Auth; adminStorage: Storage; adminDb:
         })
     }
 
-    return {
-        adminAuth: getAuth(app),
-        adminStorage: getStorage(app),
-        adminDb: getFirestore(app),
-        app
-    }
+    authInstance = getAuth(app)
+    storageInstance = getStorage(app)
+    dbInstance = getFirestore(app)
 }
 
-// Singleton instances
-const { adminAuth, adminStorage, adminDb } = initFirebaseAdmin()
+// Export Proxies to allow lazy initialization (prevents build crashes on import)
+export const adminAuth = new Proxy({} as Auth, {
+    get: (_target, prop) => {
+        ensureInitialized()
+        return (authInstance as any)[prop]
+    }
+})
 
-export { adminAuth, adminStorage, adminDb }
+export const adminStorage = new Proxy({} as Storage, {
+    get: (_target, prop) => {
+        ensureInitialized()
+        return (storageInstance as any)[prop]
+    }
+})
+
+export const adminDb = new Proxy({} as Firestore, {
+    get: (_target, prop) => {
+        ensureInitialized()
+        return (dbInstance as any)[prop]
+    }
+})
 
 /**
  * Verify a Firebase ID token
@@ -126,13 +149,7 @@ export async function uploadFile(
         })
 
         // Generate public URL
-        // Note: For production, consider using signed URLs or ensuring bucket is public
         const publicUrl = `https://storage.googleapis.com/${bucket.name}/${destination}`
-
-        // Simpler public URL format if bucket is public logic enabled:
-        // https://firebasestorage.googleapis.com/v0/b/[bucket]/o/[path]?alt=media
-        // But the googleapis.com link works if object is ACL public.
-
         return { url: publicUrl, path: destination }
     } catch (error) {
         console.error('Error uploading file to Firebase Storage:', error)
