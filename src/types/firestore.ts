@@ -61,6 +61,8 @@ export interface SubmissionDoc {
     reviewReason?: string
     reviewedAt?: Timestamp
     bonusActivityIds: string[] // IDs of claimed bonuses
+    isArchived?: boolean       // For media retention policy
+    archivedAt?: Timestamp     // When it was archived
     createdAt: Timestamp
     updatedAt: Timestamp
 }
