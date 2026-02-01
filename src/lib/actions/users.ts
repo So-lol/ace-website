@@ -56,6 +56,75 @@ export async function getUsers(): Promise<UserWithFamily[]> {
 }
 
 /**
+ * Get full user profile with relations for dashboard
+ */
+export async function getUserProfile(userId: string) {
+    try {
+        const userDoc = await adminDb.collection('users').doc(userId).get()
+        if (!userDoc.exists) return null
+
+        const userData = userDoc.data() as UserDoc
+        let family: any = null
+        let pairing: any = null
+
+        // Fetch Family
+        if (userData.familyId) {
+            const familyDoc = await adminDb.collection('families').doc(userData.familyId).get()
+            if (familyDoc.exists) {
+                family = { id: familyDoc.id, ...familyDoc.data() }
+            }
+        }
+
+        // Fetch Pairing (Mentor or Mentee)
+        // First check if mentor
+        let pairingSnap = await adminDb.collection('pairings').where('mentorId', '==', userId).limit(1).get()
+
+        if (pairingSnap.empty) {
+            // Check if mentee
+            pairingSnap = await adminDb.collection('pairings').where('menteeIds', 'array-contains', userId).limit(1).get()
+        }
+
+        if (!pairingSnap.empty) {
+            const pDoc = pairingSnap.docs[0]
+            const pData = pDoc.data()
+
+            // Fetch mentees names for display
+            const menteeIds = pData.menteeIds || []
+            const mentees: string[] = []
+
+            if (menteeIds.length > 0) {
+                // Fetch mentees in parallel
+                // Use Promise.all
+                // Firestore 'in' query supports up to 10
+                if (menteeIds.length > 0) {
+                    const menteesSnap = await adminDb.collection('users').where('uid', 'in', menteeIds).get()
+                    menteesSnap.forEach(doc => {
+                        const d = doc.data()
+                        if (d.name) mentees.push(d.name)
+                    })
+                }
+            }
+
+            pairing = {
+                id: pDoc.id,
+                ...pData,
+                mentees: mentees
+            }
+        }
+
+        return {
+            ...userData,
+            id: userDoc.id,
+            family,
+            pairing
+        }
+    } catch (error) {
+        console.error('Error fetching user profile:', error)
+        return null
+    }
+}
+
+/**
  * Update user role (admin only)
  */
 export async function updateUserRole(userId: string, role: UserRole) {

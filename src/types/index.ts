@@ -66,10 +66,11 @@ export interface Submission {
 export interface BonusActivity {
     id: string
     name: string
-    description?: string
+    description: string
     points: number
     isActive: boolean
-    // ... other fields
+    createdAt: Date
+    updatedAt: Date
 }
 
 // ======================
@@ -81,7 +82,7 @@ export type UserWithFamily = User & {
 }
 
 export type PairingWithMentees = Pairing & {
-    mentees: User[] // or UserWithFamily?
+    mentees: User[]
     family: Family
 }
 
@@ -110,14 +111,21 @@ export type SubmissionWithRelations = Submission & {
     bonusActivities: { bonusActivity: BonusActivity }[]
 }
 
-export type AnnouncementWithAuthor = {
+export interface Announcement {
     id: string
     title: string
     content: string
     authorId: string
-    author: User
+    authorName: string
     isPublished: boolean
+    isPinned: boolean
+    publishedAt: Date | null
     createdAt: Date
+    updatedAt: Date
+}
+
+export type AnnouncementWithAuthor = Announcement & {
+    author: User
 }
 
 // ======================

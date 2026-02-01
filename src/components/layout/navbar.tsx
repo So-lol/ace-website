@@ -42,14 +42,33 @@ interface NavbarProps {
     } | null
 }
 
+import { auth } from '@/lib/firebase'
+import { signOut as firebaseSignOut } from 'firebase/auth'
+
+
+
 export function Navbar({ user }: NavbarProps) {
     const pathname = usePathname()
     const router = useRouter()
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
     const handleSignOut = async () => {
-        await signOut()
-        router.refresh()
+        try {
+            // 1. Sign out from Firebase Client SDK
+            await firebaseSignOut(auth)
+
+            // 2. Sign out from Server Session
+            const result = await signOut()
+
+            if (result.success && result.redirectTo) {
+                router.push(result.redirectTo)
+                router.refresh()
+            }
+        } catch (error) {
+            console.error('Error signing out:', error)
+            // Fallback
+            router.push('/login')
+        }
     }
 
     const getInitials = (name: string) => {

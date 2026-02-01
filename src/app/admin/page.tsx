@@ -17,34 +17,36 @@ import {
     CheckCircle2,
     AlertCircle
 } from 'lucide-react'
+import { getAdminStats } from '@/lib/actions/stats'
+import { getSubmissions } from '@/lib/actions/submissions'
+import { getAnnouncements } from '@/lib/actions/announcements'
 
 export const metadata: Metadata = {
     title: 'Admin Dashboard',
     description: 'ACE program administration dashboard',
 }
 
-// Mock data
-const stats = {
-    pendingSubmissions: 12,
-    pointsThisWeek: 340,
-    activeBonuses: 2,
-    totalFamilies: 8,
-    totalUsers: 48,
-    approvedThisWeek: 28
+function formatTimeAgo(date: Date) {
+    const now = new Date()
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000)
+
+    if (diffInSeconds < 60) return 'just now'
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`
+    return `${Math.floor(diffInSeconds / 86400)}d ago`
 }
 
-const recentSubmissions = [
-    { id: '1', pairing: 'Linh N. & Minh T.', family: 'Pho Family', status: 'PENDING', time: '2 hours ago' },
-    { id: '2', pairing: 'Hai P. & Tuan V.', family: 'Banh Mi Squad', status: 'PENDING', time: '3 hours ago' },
-    { id: '3', pairing: 'Mai H. & Duc B.', family: 'Spring Roll Crew', status: 'APPROVED', time: '5 hours ago' },
-]
+export default async function AdminDashboardPage() {
+    const [stats, submissions, announcements] = await Promise.all([
+        getAdminStats(),
+        getSubmissions(),
+        getAnnouncements(false)
+    ])
 
-const recentAnnouncements = [
-    { id: '1', title: 'Week 5 Bonus Activity', published: true, date: '2 days ago' },
-    { id: '2', title: 'Family Mixer Event', published: true, date: '4 days ago' },
-]
+    const recentSubmissions = submissions.slice(0, 5)
+    // Filter out pinned announcements for "Recent" list if desired, but just showing latest 5 is fine
+    const recentAnnouncements = announcements.slice(0, 5)
 
-export default function AdminDashboardPage() {
     return (
         <>
             <AdminHeader title="Dashboard" />
@@ -126,7 +128,7 @@ export default function AdminDashboardPage() {
                 </div>
 
                 <div className="grid lg:grid-cols-2 gap-6">
-                    {/* Pending Submissions */}
+                    {/* Recent Submissions */}
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between">
                             <CardTitle className="flex items-center gap-2">
@@ -142,28 +144,40 @@ export default function AdminDashboardPage() {
                         </CardHeader>
                         <CardContent>
                             <div className="space-y-4">
-                                {recentSubmissions.map((submission) => (
-                                    <div
-                                        key={submission.id}
-                                        className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
-                                    >
-                                        <div>
-                                            <div className="font-medium text-sm">{submission.pairing}</div>
-                                            <div className="text-xs text-muted-foreground">{submission.family}</div>
+                                {recentSubmissions.length === 0 ? (
+                                    <p className="text-muted-foreground text-center py-4">No recent submissions.</p>
+                                ) : (
+                                    recentSubmissions.map((submission) => (
+                                        <div
+                                            key={submission.id}
+                                            className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                                        >
+                                            <div>
+                                                <div className="font-medium text-sm">
+                                                    {submission.pairing ?
+                                                        `${submission.pairing.mentor?.name?.split(' ').pop()} & ${submission.pairing.menteeIds?.length} Mentees`
+                                                        : 'Unknown Pairing'}
+                                                </div>
+                                                <div className="text-xs text-muted-foreground">
+                                                    {submission.pairing?.family?.name || 'Unknown Family'} • Week {submission.weekNumber}
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-xs text-muted-foreground">
+                                                    {formatTimeAgo(submission.createdAt)}
+                                                </span>
+                                                <Badge
+                                                    variant={submission.status === 'PENDING' ? 'secondary' : 'default'}
+                                                    className={submission.status === 'APPROVED' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : ''}
+                                                >
+                                                    {submission.status === 'PENDING' && <Clock className="w-3 h-3 mr-1" />}
+                                                    {submission.status === 'APPROVED' && <CheckCircle2 className="w-3 h-3 mr-1" />}
+                                                    {submission.status}
+                                                </Badge>
+                                            </div>
                                         </div>
-                                        <div className="flex items-center gap-3">
-                                            <span className="text-xs text-muted-foreground">{submission.time}</span>
-                                            <Badge
-                                                variant={submission.status === 'PENDING' ? 'secondary' : 'default'}
-                                                className={submission.status === 'APPROVED' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : ''}
-                                            >
-                                                {submission.status === 'PENDING' && <Clock className="w-3 h-3 mr-1" />}
-                                                {submission.status === 'APPROVED' && <CheckCircle2 className="w-3 h-3 mr-1" />}
-                                                {submission.status}
-                                            </Badge>
-                                        </div>
-                                    </div>
-                                ))}
+                                    ))
+                                )}
                             </div>
 
                             {stats.pendingSubmissions > 0 && (
@@ -177,7 +191,7 @@ export default function AdminDashboardPage() {
                         </CardContent>
                     </Card>
 
-                    {/* Quick Actions & Announcements */}
+                    {/* Quick Actions & Recent Announcements */}
                     <div className="space-y-6">
                         {/* Quick Actions */}
                         <Card>
@@ -228,20 +242,26 @@ export default function AdminDashboardPage() {
                             </CardHeader>
                             <CardContent>
                                 <div className="space-y-3">
-                                    {recentAnnouncements.map((announcement) => (
-                                        <div
-                                            key={announcement.id}
-                                            className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
-                                        >
-                                            <div>
-                                                <div className="font-medium text-sm">{announcement.title}</div>
-                                                <div className="text-xs text-muted-foreground">{announcement.date}</div>
+                                    {recentAnnouncements.length === 0 ? (
+                                        <p className="text-muted-foreground text-center py-4">No recent announcements.</p>
+                                    ) : (
+                                        recentAnnouncements.map((announcement) => (
+                                            <div
+                                                key={announcement.id}
+                                                className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                                            >
+                                                <div>
+                                                    <div className="font-medium text-sm">{announcement.title}</div>
+                                                    <div className="text-xs text-muted-foreground">
+                                                        {formatTimeAgo(announcement.publishedAt ? announcement.publishedAt.toDate() : announcement.createdAt.toDate())}
+                                                    </div>
+                                                </div>
+                                                <Badge variant={announcement.isPublished ? 'default' : 'secondary'}>
+                                                    {announcement.isPublished ? 'Published' : 'Draft'}
+                                                </Badge>
                                             </div>
-                                            <Badge variant={announcement.published ? 'default' : 'secondary'}>
-                                                {announcement.published ? 'Published' : 'Draft'}
-                                            </Badge>
-                                        </div>
-                                    ))}
+                                        ))
+                                    )}
                                 </div>
                             </CardContent>
                         </Card>

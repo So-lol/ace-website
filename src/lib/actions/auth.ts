@@ -14,6 +14,33 @@ type AuthResult = {
     needsClientAuth?: boolean // Flag to tell client to perform client-side sign-in
 }
 
+export async function getCurrentUser(): Promise<UserDoc | null> {
+    const cookieStore = await cookies()
+    const sessionCookie = cookieStore.get('firebase-session')?.value
+
+    if (!sessionCookie) return null
+
+    try {
+        // Verify the ID token
+        const { user: firebaseUser, error } = await verifyIdToken(sessionCookie)
+
+        if (error || !firebaseUser) return null
+
+        // Fetch user profile from Firestore
+        const userDoc = await adminDb.collection('users').doc(firebaseUser.uid).get()
+
+        if (!userDoc.exists) return null
+
+        return {
+            id: userDoc.id,
+            ...userDoc.data()
+        } as unknown as UserDoc
+    } catch (error) {
+        console.error('Error getting current user:', error)
+        return null
+    }
+}
+
 export async function signUp(formData: FormData): Promise<AuthResult> {
     const name = formData.get('name') as string
     const email = formData.get('email') as string

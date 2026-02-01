@@ -4,6 +4,9 @@ import { getAuthenticatedUser, requireAdmin } from '@/lib/auth-helpers'
 import { uploadFile, deleteFile, adminDb } from '@/lib/firebase-admin'
 import { revalidatePath } from 'next/cache'
 import { Timestamp, FieldValue } from 'firebase-admin/firestore'
+
+// Storage bucket name
+const STORAGE_BUCKET = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
 import { SubmissionDoc, PairingDoc, UserDoc, SubmissionStatus } from '@/types/firestore'
 
 export type UploadResult = {
@@ -66,6 +69,26 @@ export async function uploadSubmissionImage(formData: FormData): Promise<UploadR
         success: true,
         imageUrl: result.url,
         imagePath: result.path,
+    }
+}
+
+/**
+ * Get a user's submission history
+ */
+export async function getUserSubmissions(userId: string) {
+    try {
+        const snapshot = await adminDb.collection('submissions')
+            .where('submitterId', '==', userId)
+            .orderBy('createdAt', 'desc')
+            .get()
+
+        return snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        })) as unknown as SubmissionDoc[]
+    } catch (error) {
+        console.error('Error fetching user submissions:', error)
+        return []
     }
 }
 

@@ -1,5 +1,6 @@
 import { Metadata } from 'next'
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { NavbarWithAuthClient, Footer } from '@/components/layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -15,38 +16,17 @@ import {
     XCircle,
     CalendarDays
 } from 'lucide-react'
+import { getCurrentUser } from '@/lib/actions/auth'
+import { getUserProfile } from '@/lib/actions/users'
+import { getUserStats } from '@/lib/actions/stats'
+import { getUserSubmissions } from '@/lib/actions/submissions'
+import { getBonusActivities } from '@/lib/actions/bonuses'
+import { getCurrentWeek } from '@/lib/utils'
 
 export const metadata: Metadata = {
     title: 'Dashboard',
     description: 'Your ACE dashboard',
 }
-
-// Mock data - will be replaced with real data
-const mockUser = {
-    name: 'Linh Nguyen',
-    role: 'MENTOR',
-    family: {
-        name: 'Pho Family',
-        rank: 1
-    },
-    pairing: {
-        mentees: ['Minh Tran', 'An Le']
-    }
-}
-
-const mockStats = {
-    weekNumber: 5,
-    year: 2026,
-    totalPoints: 280,
-    submissionsCount: 4,
-    hasSubmittedThisWeek: false
-}
-
-const recentSubmissions = [
-    { id: '1', weekNumber: 4, status: 'APPROVED', points: 15, date: '2026-01-22' },
-    { id: '2', weekNumber: 3, status: 'APPROVED', points: 10, date: '2026-01-15' },
-    { id: '3', weekNumber: 2, status: 'APPROVED', points: 15, date: '2026-01-08' },
-]
 
 function getStatusBadge(status: string) {
     switch (status) {
@@ -60,7 +40,32 @@ function getStatusBadge(status: string) {
     }
 }
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+    const user = await getCurrentUser()
+
+    if (!user) {
+        redirect('/login')
+    }
+
+    const [profile, stats, submissions, bonusActivities] = await Promise.all([
+        getUserProfile(user.uid),
+        getUserStats(user.uid),
+        getUserSubmissions(user.uid),
+        getBonusActivities(true)
+    ])
+
+    const { weekNumber, year } = getCurrentWeek()
+    const currentWeekSubmissions = submissions.filter(
+        s => s.weekNumber === weekNumber && s.year === year
+    )
+    const hasSubmittedThisWeek = currentWeekSubmissions.length > 0
+
+    // Profile Fallbacks
+    const familyName = profile?.family?.name || 'No Family'
+    const familyRank = profile?.family?.rank || '-' // Rank logic needs to be computed/stored
+    const mentees = profile?.pairing?.mentees || []
+    const menteeNames = mentees.length > 0 ? mentees.join(' & ') : 'No Mentees'
+
     return (
         <div className="min-h-screen flex flex-col">
             <NavbarWithAuthClient />
@@ -70,10 +75,10 @@ export default function DashboardPage() {
                     {/* Welcome Header */}
                     <div className="mb-8">
                         <h1 className="text-3xl font-bold mb-2">
-                            Welcome back, {mockUser.name.split(' ')[0]}! 👋
+                            Welcome back, {user.name.split(' ')[0]}! 👋
                         </h1>
                         <p className="text-muted-foreground">
-                            {mockUser.role === 'MENTOR' ? 'Anh/Chị' : 'Em'} • {mockUser.family.name}
+                            {user.role === 'MENTOR' ? 'Anh/Chị' : 'Em'} • {familyName}
                         </p>
                     </div>
 
@@ -83,7 +88,7 @@ export default function DashboardPage() {
                             <CardContent className="pt-6">
                                 <div className="text-center">
                                     <CalendarDays className="w-8 h-8 mx-auto mb-2 text-primary" />
-                                    <div className="text-2xl font-bold">Week {mockStats.weekNumber}</div>
+                                    <div className="text-2xl font-bold">Week {weekNumber}</div>
                                     <div className="text-xs text-muted-foreground">Current Week</div>
                                 </div>
                             </CardContent>
@@ -93,7 +98,7 @@ export default function DashboardPage() {
                             <CardContent className="pt-6">
                                 <div className="text-center">
                                     <Trophy className="w-8 h-8 mx-auto mb-2 text-[#FFD700]" />
-                                    <div className="text-2xl font-bold">{mockStats.totalPoints}</div>
+                                    <div className="text-2xl font-bold">{stats.totalPoints}</div>
                                     <div className="text-xs text-muted-foreground">Total Points</div>
                                 </div>
                             </CardContent>
@@ -103,7 +108,7 @@ export default function DashboardPage() {
                             <CardContent className="pt-6">
                                 <div className="text-center">
                                     <Camera className="w-8 h-8 mx-auto mb-2 text-primary" />
-                                    <div className="text-2xl font-bold">{mockStats.submissionsCount}</div>
+                                    <div className="text-2xl font-bold">{stats.totalSubmissions}</div>
                                     <div className="text-xs text-muted-foreground">Submissions</div>
                                 </div>
                             </CardContent>
@@ -113,7 +118,7 @@ export default function DashboardPage() {
                             <CardContent className="pt-6">
                                 <div className="text-center">
                                     <Users className="w-8 h-8 mx-auto mb-2 text-[#E60012]" />
-                                    <div className="text-2xl font-bold">#{mockUser.family.rank}</div>
+                                    <div className="text-2xl font-bold">#{familyRank}</div>
                                     <div className="text-xs text-muted-foreground">Family Rank</div>
                                 </div>
                             </CardContent>
@@ -129,11 +134,11 @@ export default function DashboardPage() {
                                     Weekly Submission
                                 </CardTitle>
                                 <CardDescription>
-                                    Week {mockStats.weekNumber} • Ends Sunday 11:59 PM
+                                    Week {weekNumber} • Ends Sunday 11:59 PM
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
-                                {mockStats.hasSubmittedThisWeek ? (
+                                {hasSubmittedThisWeek ? (
                                     <div className="text-center py-8">
                                         <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center mx-auto mb-4">
                                             <CheckCircle2 className="w-8 h-8 text-green-600 dark:text-green-400" />
@@ -170,14 +175,16 @@ export default function DashboardPage() {
                                 <div className="border-t pt-4 mt-4">
                                     <h4 className="font-semibold text-sm mb-3">This Week&apos;s Bonus Activities</h4>
                                     <div className="space-y-2">
-                                        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                                            <span className="text-sm">📚 Study Session Together</span>
-                                            <Badge variant="secondary">+5 pts</Badge>
-                                        </div>
-                                        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                                            <span className="text-sm">🎮 Game Night</span>
-                                            <Badge variant="secondary">+5 pts</Badge>
-                                        </div>
+                                        {bonusActivities.length === 0 ? (
+                                            <p className="text-sm text-muted-foreground">No active bonus activities.</p>
+                                        ) : (
+                                            bonusActivities.slice(0, 3).map(bonus => (
+                                                <div key={bonus.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                                                    <span className="text-sm">{bonus.name}</span>
+                                                    <Badge variant="secondary">+{bonus.points} pts</Badge>
+                                                </div>
+                                            ))
+                                        )}
                                     </div>
                                 </div>
                             </CardContent>
@@ -195,22 +202,22 @@ export default function DashboardPage() {
                                 <div className="space-y-4">
                                     <div>
                                         <div className="text-sm text-muted-foreground mb-1">Mentor (You)</div>
-                                        <div className="font-medium">{mockUser.name}</div>
+                                        <div className="font-medium">{user.role === 'MENTOR' ? user.name : (profile?.pairing?.mentorName || 'Unknown')}</div>
                                     </div>
                                     <div>
                                         <div className="text-sm text-muted-foreground mb-1">
-                                            {mockUser.pairing.mentees.length > 1 ? 'Mentees' : 'Mentee'}
+                                            {mentees.length > 1 ? 'Mentees' : 'Mentee'}
                                         </div>
                                         <div className="font-medium">
-                                            {mockUser.pairing.mentees.join(' & ')}
+                                            {menteeNames}
                                         </div>
                                     </div>
                                     <div>
                                         <div className="text-sm text-muted-foreground mb-1">Family</div>
                                         <div className="font-medium flex items-center gap-2">
-                                            {mockUser.family.name}
+                                            {familyName}
                                             <Badge variant="outline" className="text-xs">
-                                                Rank #{mockUser.family.rank}
+                                                Rank #{familyRank}
                                             </Badge>
                                         </div>
                                     </div>
@@ -234,25 +241,32 @@ export default function DashboardPage() {
                             </CardHeader>
                             <CardContent>
                                 <div className="space-y-3">
-                                    {recentSubmissions.map((submission) => (
-                                        <div
-                                            key={submission.id}
-                                            className="flex items-center justify-between p-3 bg-muted/30 rounded-lg"
-                                        >
-                                            <div>
-                                                <div className="font-medium text-sm">Week {submission.weekNumber}</div>
-                                                <div className="text-xs text-muted-foreground">{submission.date}</div>
+                                    {submissions.length === 0 ? (
+                                        <p className="text-sm text-muted-foreground">No submissions yet.</p>
+                                    ) : (
+                                        submissions.slice(0, 3).map((submission) => (
+                                            <div
+                                                key={submission.id}
+                                                className="flex items-center justify-between p-3 bg-muted/30 rounded-lg"
+                                            >
+                                                <div>
+                                                    <div className="font-medium text-sm">Week {submission.weekNumber}</div>
+                                                    <div className="text-xs text-muted-foreground">
+                                                        {submission.createdAt ? new Date(submission.createdAt.toDate()).toLocaleDateString() : 'N/A'}
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    {getStatusBadge(submission.status)}
+                                                    {submission.status === 'APPROVED' && (
+                                                        <span className="text-sm font-semibold text-primary">
+                                                            {/* Calculate points if not stored? It is stored in sub */}
+                                                            +{submission.totalPoints || 0}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-2">
-                                                {getStatusBadge(submission.status)}
-                                                {submission.status === 'APPROVED' && (
-                                                    <span className="text-sm font-semibold text-primary">
-                                                        +{submission.points}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
+                                        ))
+                                    )}
                                 </div>
                             </CardContent>
                         </Card>

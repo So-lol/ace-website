@@ -69,12 +69,36 @@ export interface SubmissionDoc {
 // For now, simpler to just store IDs in submission or a subcollection
 
 // announcements/{id}
+export interface BonusActivityDoc {
+    id: string
+    name: string
+    description: string
+    points: number
+    isActive: boolean
+    createdAt: Timestamp
+    updatedAt: Timestamp
+}
+
 export interface AnnouncementDoc {
     id: string
     title: string
     content: string
     authorId: string
+    authorName: string // Denormalized for display
     isPublished: boolean
+    isPinned: boolean
+    publishedAt: Timestamp | null
     createdAt: Timestamp
     updatedAt: Timestamp
+}
+
+export interface AuditLogDoc {
+    id: string
+    action: string
+    targetType: string
+    targetId: string
+    actorId: string
+    details: string
+    timestamp: Timestamp
+    metadata?: Record<string, any>
 }
