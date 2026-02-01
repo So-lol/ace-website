@@ -1,98 +1,22 @@
 import { Metadata } from 'next'
 import { AdminHeader } from '@/components/admin'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
     Search,
     Users,
     UserCheck,
-    UserCog,
     Shield,
-    MoreHorizontal,
-    Mail,
-    Calendar
 } from 'lucide-react'
 import { getUsers } from '@/lib/actions/users'
 import { getFamilies } from '@/lib/actions/families'
-import { formatDistanceToNow } from 'date-fns'
 import AddUserForm from './add-user-form'
+import UserCard from './user-card'
 
 export const metadata: Metadata = {
     title: 'User Management',
     description: 'Manage users and roles',
-}
-
-function getRoleBadge(role: string) {
-    switch (role) {
-        case 'ADMIN':
-            return (
-                <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 gap-1">
-                    <Shield className="w-3 h-3" />
-                    Admin
-                </Badge>
-            )
-        case 'MENTOR':
-            return (
-                <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 gap-1">
-                    <UserCheck className="w-3 h-3" />
-                    Mentor
-                </Badge>
-            )
-        case 'MENTEE':
-            return (
-                <Badge variant="secondary" className="gap-1">
-                    <Users className="w-3 h-3" />
-                    Mentee
-                </Badge>
-            )
-        default:
-            return <Badge variant="outline">{role}</Badge>
-    }
-}
-
-type UserWithRelations = Awaited<ReturnType<typeof getUsers>>[0]
-
-function UserCard({ user }: { user: UserWithRelations }) {
-    return (
-        <Card>
-            <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-4">
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-white font-semibold text-lg">
-                            {user.name.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                            <h3 className="font-semibold">{user.name}</h3>
-                            <div className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
-                                <Mail className="w-3 h-3" />
-                                {user.email}
-                            </div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                                {getRoleBadge(user.role)}
-                                {user.family && (
-                                    <Badge variant="outline">{user.family.name}</Badge>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <div className="text-right text-xs text-muted-foreground mr-2">
-                            <div className="flex items-center gap-1">
-                                <Calendar className="w-3 h-3" />
-                                Joined {formatDistanceToNow(new Date(user.createdAt), { addSuffix: true })}
-                            </div>
-                        </div>
-                        <Button variant="ghost" size="icon">
-                            <MoreHorizontal className="w-4 h-4" />
-                        </Button>
-                    </div>
-                </div>
-            </CardContent>
-        </Card>
-    )
 }
 
 export default async function UsersPage() {

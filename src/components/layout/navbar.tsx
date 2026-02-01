@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -193,6 +193,8 @@ export function Navbar({ user }: NavbarProps) {
                         </Button>
                     </SheetTrigger>
                     <SheetContent side="right" className="w-[280px]">
+                        <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
+                        <SheetDescription className="sr-only">Main navigation links and user options</SheetDescription>
                         <div className="flex flex-col gap-4 mt-8">
                             {/* User info in mobile */}
                             {user && (

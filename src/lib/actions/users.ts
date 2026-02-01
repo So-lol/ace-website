@@ -220,13 +220,41 @@ export async function updateUserRole(userId: string, role: UserRole) {
  */
 export async function deleteUser(userId: string) {
     try {
-        await requireAdmin()
+        const admin = await requireAdmin()
+
+        // Prevent self-deletion
+        if (admin.id === userId) {
+            return { success: false, error: 'You cannot delete your own account' }
+        }
+
+        // Delete from Firebase Auth first (this is the operation more likely to fail)
+        const authResult = await deleteFirebaseUser(userId)
+        if (!authResult.success) {
+            console.error('Failed to delete user from Firebase Auth:', authResult.error)
+            // Continue anyway - user might not exist in Auth but exists in Firestore
+        }
+
+        // Delete from Firestore
         await adminDb.collection('users').doc(userId).delete()
-        await deleteFirebaseUser(userId)
+
+        // Also remove user from any family memberIds
+        const familiesSnap = await adminDb.collection('families')
+            .where('memberIds', 'array-contains', userId)
+            .get()
+
+        for (const doc of familiesSnap.docs) {
+            const memberIds = doc.data().memberIds || []
+            await doc.ref.update({
+                memberIds: memberIds.filter((id: string) => id !== userId),
+                updatedAt: Timestamp.now()
+            })
+        }
+
         revalidatePath('/admin/users')
+        revalidatePath('/admin/families')
         return { success: true }
-    } catch (error) {
+    } catch (error: any) {
         console.error('Delete user error:', error)
-        return { success: false, error: 'Failed to delete user' }
+        return { success: false, error: error.message || 'Failed to delete user' }
     }
 }
