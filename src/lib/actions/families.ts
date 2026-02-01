@@ -17,21 +17,21 @@ export async function getFamilies(includeArchived = false) {
         }
 
         const snapshot = await query.get()
-        const families = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        })) as (FamilyDoc & { id: string })[]
+        const families = snapshot.docs.map(doc => {
+            const data = doc.data()
+            return {
+                id: doc.id,
+                name: data.name,
+                isArchived: data.isArchived || false,
+                memberIds: data.memberIds || [],
+                memberCount: data.memberIds?.length || 0,
+                // Serialize timestamps to plain dates
+                createdAt: data.createdAt?.toDate?.() || new Date(),
+                updatedAt: data.updatedAt?.toDate?.() || new Date()
+            }
+        })
 
-        // Calculate member and pairing counts (if not stored)
-        // Ideally these should be stored on the doc, but we can count here or update the doc
-        // For now, return as is. The client list expects memberIds.length
-
-        return families.map(f => ({
-            ...f,
-            memberCount: f.memberIds?.length || 0,
-            // pairingCount needs fetching pairings, maybe expensive for list
-            // We can fetch pairings separately or store count on family doc
-        }))
+        return families
     } catch (error) {
         console.error('Error fetching families:', error)
         return []
