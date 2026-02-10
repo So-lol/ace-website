@@ -109,3 +109,64 @@ export interface AuditLogDoc {
     timestamp: Timestamp
     metadata?: Record<string, any>
 }
+
+// aceApplications/{id}
+export type AceRole = 'FAMILY_HEAD' | 'ANH' | 'CHI' | 'CHANH' | 'EM'
+
+export interface AceApplicationDoc {
+    id: string
+
+    // Contact Info
+    name: string
+    pronouns: string
+    email: string
+    phone: string
+    instagram: string
+
+    // Academic Info
+    university: string
+    schoolYear: string
+    majorsMinors: string
+    livesOnCampus: string
+
+    // Role
+    role: AceRole
+
+    // Family Head only fields
+    familyHeadAcknowledged?: boolean
+    familyHeadWhy?: string
+    familyHeadHowHelp?: string
+    familyHeadExclusions?: string
+    familyHeadIdentities?: string
+    familyHeadFamilyPrefs?: string
+    familyHeadConcerns?: string
+
+    // Non-Family-Head ACE Questions
+    goals?: string
+    willingMultiple?: string
+    preferredActivities?: string[]
+    preferredActivitiesOther?: string
+    familyHeadPreference?: string
+    pairingPreferences?: string
+    pairingExclusions?: string
+    meetFrequency?: string
+    otherCommitments?: string
+    coreIdentities?: string
+
+    // Personal Questions
+    hobbies: string
+    musicTaste: string
+    perfectDay: string
+    dreamVacation: string
+    introExtroScale: number
+    reachOutStyle: string
+    additionalInfo: string
+
+    // Final
+    availableForReveal: string
+    finalComments: string
+    selfIntro: string
+
+    createdAt: Timestamp
+    updatedAt: Timestamp
+}

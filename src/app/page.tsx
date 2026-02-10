@@ -53,9 +53,9 @@ export default function HomePage() {
 
               {/* CTA Buttons */}
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Link href="/login">
+                <Link href="/apply">
                   <Button size="lg" className="doraemon-gradient text-white px-8 h-12 text-lg gap-2 hover:opacity-90 transition-opacity">
-                    Join the Program
+                    Apply Now
                     <ArrowRight className="w-5 h-5" />
                   </Button>
                 </Link>

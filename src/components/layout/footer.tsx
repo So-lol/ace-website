@@ -32,6 +32,11 @@ export function Footer() {
                         <h3 className="font-semibold mb-4 text-foreground">Quick Links</h3>
                         <ul className="space-y-2 text-sm text-muted-foreground">
                             <li>
+                                <Link href="/apply" className="hover:text-primary transition-colors">
+                                    ACE Application
+                                </Link>
+                            </li>
+                            <li>
                                 <Link href="/leaderboard" className="hover:text-primary transition-colors">
                                     Leaderboard
                                 </Link>

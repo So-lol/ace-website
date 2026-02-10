@@ -23,12 +23,14 @@ import {
     LayoutDashboard,
     Cat,
     User,
-    Settings
+    Settings,
+    ClipboardList
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { signOut } from '@/lib/actions/auth'
 
 const navigation = [
+    { name: 'Apply', href: '/apply', icon: ClipboardList },
     { name: 'Leaderboard', href: '/leaderboard', icon: Trophy },
     { name: 'Announcements', href: '/announcements', icon: Megaphone },
     { name: 'About ACE', href: '/about', icon: Info },

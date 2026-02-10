@@ -18,7 +18,8 @@ import {
     LogOut,
     ChevronLeft,
     ChevronRight,
-    Image
+    Image,
+    ClipboardList
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -29,6 +30,7 @@ const adminNavItems = [
     { name: 'Families', href: '/admin/families', icon: UsersRound },
     { name: 'Users', href: '/admin/users', icon: Users },
     { name: 'Pairings', href: '/admin/pairings', icon: Link2 },
+    { name: 'Applications', href: '/admin/applications', icon: ClipboardList },
     { divider: true },
     { name: 'Import Data', href: '/admin/import', icon: FileUp },
     { name: 'Export Data', href: '/admin/export', icon: FileDown },
