@@ -80,6 +80,7 @@ export default function VerifyEmailPage() {
 
         setIsLoading(true)
         try {
+            // First try with actionCodeSettings (includes continue URL)
             await sendEmailVerification(user, {
                 url: `${window.location.origin}/login?message=email-verified`,
                 handleCodeInApp: false,
@@ -87,11 +88,25 @@ export default function VerifyEmailPage() {
             toast.success('Verification email sent! Check your inbox.')
             setCountdown(60) // 60 second cooldown
         } catch (error: any) {
-            console.error('Error sending verification email:', error)
+            console.error('Error sending verification email:', error.code, error.message)
+
             if (error.code === 'auth/too-many-requests') {
-                toast.error('Too many requests. Please wait a few minutes.')
+                toast.error('Firebase is rate-limiting email sends. Please wait 5-10 minutes before trying again.')
+                setCountdown(300) // 5 minute cooldown for rate limits
+            } else if (error.code === 'auth/unauthorized-continue-uri') {
+                // The continue URL domain is not authorized in Firebase Console
+                // Try sending without actionCodeSettings as a fallback
+                try {
+                    await sendEmailVerification(user)
+                    toast.success('Verification email sent! Check your inbox.')
+                    setCountdown(60)
+                } catch (fallbackError: any) {
+                    console.error('Fallback email send also failed:', fallbackError.code, fallbackError.message)
+                    toast.error(`Email send failed: ${fallbackError.code || fallbackError.message}`)
+                }
             } else {
-                toast.error('Failed to send verification email. Please try again.')
+                // Show the actual error code so we can diagnose
+                toast.error(`Email send failed (${error.code}): ${error.message}`)
             }
         } finally {
             setIsLoading(false)

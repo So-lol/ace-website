@@ -72,10 +72,20 @@ export default function SignupPage() {
                     url: `${window.location.origin}/login?message=email-verified`,
                     handleCodeInApp: false,
                 })
-            } catch (emailError) {
-                // Non-fatal: user can resend from the verify-email page
-                console.error('Failed to send verification email (can resend):', emailError)
-                toast.warning('Could not send verification email. Use the resend button on the next page.')
+            } catch (emailError: any) {
+                console.error('Failed to send verification email:', emailError.code, emailError.message)
+
+                if (emailError.code === 'auth/unauthorized-continue-uri') {
+                    // Domain not authorized — try without actionCodeSettings
+                    try {
+                        await sendEmailVerification(user)
+                    } catch (fallbackError: any) {
+                        console.error('Fallback email send also failed:', fallbackError.code, fallbackError.message)
+                        toast.warning(`Could not send verification email (${fallbackError.code}). Use the resend button on the next page.`)
+                    }
+                } else {
+                    toast.warning(`Could not send verification email (${emailError.code}). Use the resend button on the next page.`)
+                }
             }
 
             toast.success('Account created! Please verify your email.')
