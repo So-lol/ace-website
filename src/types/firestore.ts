@@ -1,5 +1,6 @@
 import { Timestamp } from 'firebase-admin/firestore'
-import { UserRole, SubmissionStatus } from './enums'
+import type { UserRole, SubmissionStatus } from './enums'
+export type { UserRole, SubmissionStatus }
 
 // ======================
 // ENUMS / UNIONS
