@@ -75,6 +75,7 @@ export default function SignupPage() {
             } catch (emailError) {
                 // Non-fatal: user can resend from the verify-email page
                 console.error('Failed to send verification email (can resend):', emailError)
+                toast.warning('Could not send verification email. Use the resend button on the next page.')
             }
 
             toast.success('Account created! Please verify your email.')
