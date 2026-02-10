@@ -84,7 +84,7 @@ export function RoleSelectionStep({ formData, update }: RoleSelectionStepProps) 
                         <p className="font-medium text-foreground">
                             Perks: Free discount card, skip-the-line food vouchers, double-portion food vouchers at VSAM events!
                         </p>
-                        <p>Questions? Contact Preston Nguyen at <a href="mailto:nguy4832@umn.edu" className="text-primary underline">hoang408@umn.edu</a></p>
+                        <p>Questions? Contact Tri Nguyen at <a href="mailto:nguy5683@umn.edu" className="text-primary underline">nguy5683@umn.edu</a></p>
                     </CardContent>
                 </Card>
             )}
