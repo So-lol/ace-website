@@ -18,7 +18,7 @@ export function SuccessScreen() {
                     </p>
                     <p className="text-muted-foreground mb-8">
                         We&apos;ll be reviewing applications and you&apos;ll learn about your pairing at the reveal event
-                        on <strong>Friday, October 24th from 6-8 PM</strong> in Bruininks 114.
+                        on <strong>Friday, March 6th from 6-8 PM</strong> in HSEC 3-110.
                         Keep an eye on our Instagram for more details!
                     </p>
                     <div className="flex gap-4 justify-center">

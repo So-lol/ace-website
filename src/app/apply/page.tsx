@@ -208,7 +208,7 @@ export default function ApplyPage() {
                     {/* Deadline Banner */}
                     <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-center mb-6">
                         <p className="text-sm font-medium text-destructive">
-                            ‼️📋 DEADLINE: 11:59 PM, FRIDAY, OCT 17
+                            ‼️📋 DEADLINE: 11:59 PM, FRIDAY, Feb 27
                         </p>
                     </div>
 
