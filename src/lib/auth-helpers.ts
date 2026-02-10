@@ -1,7 +1,6 @@
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { verifyIdToken, adminDb } from '@/lib/firebase-admin'
-import { UserRole } from '@/types/index'
+import { verifyIdToken, adminDb, verifySessionCookie } from '@/lib/firebase-admin'
 
 // Define User Interface matching Firestore schema
 export interface AuthenticatedUser {
@@ -21,7 +20,8 @@ export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> 
 
     try {
         // 1. Verify Session/Token
-        const { user: firebaseAuthUser, error } = await verifyIdToken(sessionCookie)
+        // Use session cookie verification
+        const { user: firebaseAuthUser, error } = await verifySessionCookie(sessionCookie)
         if (error || !firebaseAuthUser) return null
 
         // 2. Fetch User Data from Firestore

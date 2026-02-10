@@ -1,6 +1,6 @@
 'use server'
 
-import { requireAdmin } from '@/lib/auth-helpers'
+import { requireAdmin, getAuthenticatedUser } from '@/lib/auth-helpers'
 import { adminDb, deleteFirebaseUser, createFirebaseUser } from '@/lib/firebase-admin'
 import { revalidatePath } from 'next/cache'
 import { UserDoc, FamilyDoc } from '@/types/firestore'
@@ -144,6 +144,14 @@ export async function getUsers(): Promise<UserWithFamily[]> {
  */
 export async function getUserProfile(userId: string) {
     try {
+        const currentUser = await getAuthenticatedUser()
+        if (!currentUser) return null
+
+        // IDOR Check: Allow self or admin
+        if (currentUser.id !== userId && currentUser.role !== 'ADMIN') {
+            return null
+        }
+
         const userDoc = await adminDb.collection('users').doc(userId).get()
         if (!userDoc.exists) return null
 

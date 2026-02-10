@@ -5,7 +5,7 @@ import { AnnouncementDoc } from '@/types/firestore'
 import { Timestamp } from 'firebase-admin/firestore'
 import { revalidatePath } from 'next/cache'
 import { logAuditAction } from '@/lib/actions/audit'
-import { getAuthenticatedUser } from '@/lib/auth-helpers'
+import { getAuthenticatedUser, requireAdmin } from '@/lib/auth-helpers'
 
 export async function getAnnouncements(publishedOnly = false) {
     try {
@@ -38,7 +38,12 @@ export async function getAnnouncements(publishedOnly = false) {
 
 export async function createAnnouncement(data: { title: string; content: string; authorId: string; authorName: string; isPublished: boolean; isPinned: boolean; publishedAt?: Date | null }) {
     try {
+        const admin = await requireAdmin()
+
         const docRef = adminDb.collection('announcements').doc()
+
+        // Ensure author is the admin creating it (or allow overriding if needed, but safer to force)
+        // For now, trust the data passed but we verified admin access.
 
         let publishedAt = null
         if (data.isPublished) {
@@ -56,15 +61,14 @@ export async function createAnnouncement(data: { title: string; content: string;
         revalidatePath('/announcements')
         revalidatePath('/')
 
-        const user = await getAuthenticatedUser()
         await logAuditAction(
-            data.authorId,
+            admin.id,
             'CREATE',
             'ANNOUNCEMENT',
             docRef.id,
             `Created announcement: ${data.title}`,
             undefined,
-            user?.email
+            admin.email
         )
 
         return { success: true, id: docRef.id }
@@ -76,6 +80,8 @@ export async function createAnnouncement(data: { title: string; content: string;
 
 export async function updateAnnouncement(id: string, data: Omit<Partial<AnnouncementDoc>, 'publishedAt'> & { publishedAt?: Date | null }) {
     try {
+        const admin = await requireAdmin()
+
         const updateData: any = {
             ...data,
             updatedAt: Timestamp.now(),
@@ -103,20 +109,16 @@ export async function updateAnnouncement(id: string, data: Omit<Partial<Announce
         revalidatePath('/admin/announcements')
         revalidatePath('/announcements')
         revalidatePath('/')
-        revalidatePath('/')
 
-        const user = await getAuthenticatedUser()
-        if (user) {
-            await logAuditAction(
-                user.id,
-                'UPDATE',
-                'ANNOUNCEMENT',
-                id,
-                `Updated announcement`,
-                undefined,
-                user.email
-            )
-        }
+        await logAuditAction(
+            admin.id,
+            'UPDATE',
+            'ANNOUNCEMENT',
+            id,
+            `Updated announcement`,
+            undefined,
+            admin.email
+        )
 
         return { success: true }
     } catch (error) {
@@ -127,25 +129,23 @@ export async function updateAnnouncement(id: string, data: Omit<Partial<Announce
 
 export async function deleteAnnouncement(id: string) {
     try {
+        const admin = await requireAdmin()
+
         await adminDb.collection('announcements').doc(id).delete()
 
         revalidatePath('/admin/announcements')
         revalidatePath('/announcements')
         revalidatePath('/')
-        revalidatePath('/')
 
-        const user = await getAuthenticatedUser()
-        if (user) {
-            await logAuditAction(
-                user.id,
-                'DELETE',
-                'ANNOUNCEMENT',
-                id,
-                `Deleted announcement`,
-                undefined,
-                user.email
-            )
-        }
+        await logAuditAction(
+            admin.id,
+            'DELETE',
+            'ANNOUNCEMENT',
+            id,
+            `Deleted announcement`,
+            undefined,
+            admin.email
+        )
 
         return { success: true }
     } catch (error) {

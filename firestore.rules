@@ -1,6 +1,62 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN';
+    }
+
+    // Users: Can read own profile. Admins can read/write all.
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // Families: Authenticated users can read (to see names). Admins write.
+    match /families/{familyId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Pairings: Mentor or Mentees can read. Admins write.
+    match /pairings/{pairingId} {
+      allow read: if isSignedIn() && (
+        resource.data.mentorId == request.auth.uid || 
+        request.auth.uid in resource.data.menteeIds || 
+        isAdmin()
+      );
+      allow write: if isAdmin();
+    }
+
+    // Submissions: Submitters read own. Admins read all.
+    match /submissions/{submissionId} {
+      allow read: if isSignedIn() && (resource.data.submitterId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.submitterId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // Announcements: Public read if published. Admins read/write all.
+    match /announcements/{announcementId} {
+      allow read: if resource.data.isPublished == true || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Bonus Activities: Authenticated users can read. Admins write.
+    match /bonusActivities/{activityId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Audit Logs: Admins only.
+    match /audit_logs/{logId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Default deny for anything else
     match /{document=**} {
       allow read, write: if false;
     }

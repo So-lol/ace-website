@@ -78,10 +78,32 @@ export async function verifyIdToken(idToken: string) {
         const decodedToken = await adminAuth.verifyIdToken(idToken)
         return { user: decodedToken, error: null }
     } catch (error: any) {
-        // Suppress strict validity checks like expiration since client refresh handles it
-        if (error.code !== 'auth/id-token-expired') {
-            console.error('Error verifying Firebase ID token:', error)
-        }
+        // Strict check: We want to know if it's expired
+        return { user: null, error }
+    }
+}
+
+/**
+ * Create a Session Cookie
+ */
+export async function createSessionCookie(idToken: string, expiresIn: number) {
+    try {
+        const sessionCookie = await adminAuth.createSessionCookie(idToken, { expiresIn })
+        return { sessionCookie, error: null }
+    } catch (error) {
+        console.error('Error creating session cookie:', error)
+        return { sessionCookie: null, error }
+    }
+}
+
+/**
+ * Verify a Session Cookie
+ */
+export async function verifySessionCookie(sessionCookie: string) {
+    try {
+        const decodedClaims = await adminAuth.verifySessionCookie(sessionCookie, true /** checkRevoked */)
+        return { user: decodedClaims, error: null }
+    } catch (error) {
         return { user: null, error }
     }
 }

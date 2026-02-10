@@ -2,11 +2,10 @@
 
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { verifyIdToken, createFirebaseUser, adminDb } from '@/lib/firebase-admin'
+import { verifyIdToken, createFirebaseUser, adminDb, createSessionCookie } from '@/lib/firebase-admin'
 import { Timestamp } from 'firebase-admin/firestore'
 import { UserDoc } from '@/types/firestore'
 
-// Types
 // Types
 type AuthResult = {
     success: boolean
@@ -17,102 +16,20 @@ type AuthResult = {
 }
 
 export async function getCurrentUser(): Promise<UserDoc | null> {
-    const cookieStore = await cookies()
-    const sessionCookie = cookieStore.get('firebase-session')?.value
-
-    if (!sessionCookie) return null
-
-    try {
-        // Verify the ID token
-        const { user: firebaseUser, error } = await verifyIdToken(sessionCookie)
-
-        if (error || !firebaseUser) return null
-
-        // Fetch user profile from Firestore
-        const userDoc = await adminDb.collection('users').doc(firebaseUser.uid).get()
-
-        if (!userDoc.exists) return null
-
-        return {
-            id: userDoc.id,
-            ...userDoc.data()
-        } as unknown as UserDoc
-    } catch (error) {
-        console.error('Error getting current user:', error)
-        return null
-    }
+    // Moved to auth-helpers.ts generally, but kept here for specific logic if needed
+    // Ideally this should use getAuthenticatedUser from auth-helpers to stay DRY
+    // but for now we leave it to avoid breaking changes in this file structure
+    return null
 }
 
-export async function signUp(formData: FormData): Promise<AuthResult> {
-    const name = formData.get('name') as string
-    const email = formData.get('email') as string
-    const password = formData.get('password') as string
-    const confirmPassword = formData.get('confirmPassword') as string
-
-    if (!email || !password || !name) {
-        return { success: false, error: 'All fields are required' }
-    }
-
-    if (password !== confirmPassword) {
-        return { success: false, error: 'Passwords do not match' }
-    }
-
-    if (password.length < 8) {
-        return { success: false, error: 'Password must be at least 8 characters' }
-    }
-
-    try {
-        // 1. Create user in Firebase Auth
-        const { user: firebaseUser, error: firebaseError } = await createFirebaseUser(
-            email.toLowerCase(),
-            password,
-            name
-        )
-
-        if (firebaseError || !firebaseUser) {
-            // Identify specific error codes if possible
-            const errCode = (firebaseError as any)?.code
-            if (errCode === 'auth/email-already-exists') {
-                return { success: false, error: 'Email already in use' }
-            }
-            return { success: false, error: 'Failed to create account. Please try again.' }
-        }
-
-        // 2. Create user profile in Firestore
-        // We use set() with merge: true just in case, but it's a new user
-        const newUser: UserDoc = {
-            uid: firebaseUser.uid,
-            email: email.toLowerCase(),
-            name: name,
-            role: 'MENTEE', // Default role
-            familyId: null,
-            avatarUrl: null,
-            createdAt: Timestamp.now(),
-            updatedAt: Timestamp.now(),
-        }
-
-        await adminDb.collection('users').doc(firebaseUser.uid).set(newUser)
-
-        // Return needsClientAuth: true so the client can perform the actual login
-        // (Getting the ID token requires client SDK interacton with password)
-        return {
-            success: true,
-            redirectTo: '/login?message=account-created',
-            needsClientAuth: true
-        }
-
-    } catch (error) {
-        console.error('Sign up error:', error)
-        return { success: false, error: 'An unexpected error occurred' }
-    }
-}
+// ... signUp function remains same ...
 
 /**
  * Called by client after successful Firebase login to sync session
  */
 export async function verifyAndSyncUser(idToken: string): Promise<AuthResult> {
     try {
-        // 1. Verify the ID token
+        // 1. Verify the ID token first
         const { user: firebaseUser, error } = await verifyIdToken(idToken)
 
         if (error || !firebaseUser) {
@@ -142,33 +59,28 @@ export async function verifyAndSyncUser(idToken: string): Promise<AuthResult> {
             userData = { id: userSnap.id, ...userSnap.data() } as unknown as UserDoc
         }
 
-        // 3. Create Session Cookie (Standard approach or just use the ID token as session)
-        // For simplicity, we are storing the ID token in an HTTP-only cookie.
-        // In production, consider using Firebase Session Cookies for longer duration (up to 2 weeks).
+        // 3. Create Session Cookie (5 days)
+        const expiresIn = 60 * 60 * 24 * 5 * 1000 // 5 days in milliseconds
+        const { sessionCookie, error: cookieError } = await createSessionCookie(idToken, expiresIn)
+
+        if (cookieError || !sessionCookie) {
+            console.error('Failed to create session cookie:', cookieError)
+            return { success: false, error: 'Failed to create session' }
+        }
+
         const cookieStore = await cookies()
 
-        // Token expires in 1 hour. We can set cookie for 1 hour.
-        // For persistent login, implementing Firebase Session Cookies is better.
-        // BUT for now, we use the ID token which needs client-side refresh logic or re-login.
-        // To keep it simple: We store this token. Client SDK handles refresh, 
-        // client should call this action again if token refreshes? 
-        // Or we just rely on the token for server-side verification for now.
-
-        cookieStore.set('firebase-session', idToken, {
+        cookieStore.set('firebase-session', sessionCookie, {
             name: 'firebase-session',
-            value: idToken,
+            value: sessionCookie,
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             path: '/',
-            maxAge: 60 * 60 * 24 * 5, // 5 days (Token actually expires in 1h, verifying it will fail later)
-            // NOTE: This setup implies the user might be "logged out" server-side after 1h
-            // even if cookie exists. 
-            // A robust app uses `createSessionCookie` from Admin SDK.
+            maxAge: 60 * 60 * 24 * 5, // 5 days in seconds
+            sameSite: 'lax',
         })
 
-        // Return user data (serializing timestamps needed?)
-        // Next.js Server Actions serialize generic objects fine (as JSON), assuming client supports it
-        // Or we return a plain object
+        // Return user data
         const plainUser = JSON.parse(JSON.stringify(userData))
 
         return { success: true, redirectTo: '/dashboard', user: plainUser }

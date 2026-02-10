@@ -1,11 +1,14 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
-
+import { requireAdmin } from '@/lib/auth-helpers'
 import { getCurrentWeek } from '@/lib/utils'
 
 export async function getAdminStats() {
     try {
+        // Secure action
+        await requireAdmin()
+
         const { weekNumber, year } = getCurrentWeek()
 
         const [
@@ -61,11 +64,11 @@ export async function getAdminStats() {
 export async function getUserStats(userId: string) {
     try {
         const submissionsSnap = await adminDb.collection('submissions')
-            .where('userId', '==', userId)
+            .where('submitterId', '==', userId)
             .get()
 
         const submissions = submissionsSnap.docs.map(doc => doc.data())
-        const totalPoints = submissions.reduce((acc, sub) => acc + (sub.points || 0), 0)
+        const totalPoints = submissions.reduce((acc, sub) => acc + (sub.totalPoints || 0), 0)
         const totalSubmissions = submissions.length
 
         // Calculate weeks submitted count (unique weeks)
@@ -75,7 +78,7 @@ export async function getUserStats(userId: string) {
             totalPoints,
             totalSubmissions,
             submittedWeeks,
-            streak: 0 // advanced logic for streak calculation can be added later
+            streak: 0
         }
     } catch (error) {
         console.error('Error fetching user stats:', error)

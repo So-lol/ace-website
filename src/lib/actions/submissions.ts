@@ -77,6 +77,15 @@ export async function uploadSubmissionImage(formData: FormData): Promise<UploadR
  */
 export async function getUserSubmissions(userId: string) {
     try {
+        // Secure IDOR
+        const user = await getAuthenticatedUser()
+        if (!user) return []
+
+        if (user.id !== userId && user.role !== 'ADMIN') {
+            console.warn(`IDOR attempt blocked: User ${user.id} tried to fetch submissions of ${userId}`)
+            return []
+        }
+
         const snapshot = await adminDb.collection('submissions')
             .where('submitterId', '==', userId)
             .orderBy('createdAt', 'desc')
@@ -182,9 +191,31 @@ export async function createSubmission(
 
 /**
  * Delete an uploaded image (for cleanup on failed submissions)
+ * Secured: Only allows deleting own files or admin override
  */
 export async function deleteUploadedImage(imagePath: string): Promise<void> {
     try {
+        const user = await getAuthenticatedUser()
+        if (!user) return
+
+        // Security Check: Path Traversal & Ownership
+        // Expected format: submissions/{userId}/{filename}
+
+        // 1. Prevent traversal
+        if (imagePath.includes('..') || !imagePath.startsWith('submissions/')) {
+            console.error(`Security blocked deletion attempt: ${imagePath} by ${user.id}`)
+            return
+        }
+
+        // 2. Check ownership (unless admin)
+        const isOwner = imagePath.startsWith(`submissions/${user.id}/`)
+        const isAdmin = user.role === 'ADMIN'
+
+        if (!isOwner && !isAdmin) {
+            console.error(`Unauthorized deletion attempt: ${imagePath} by ${user.id}`)
+            return
+        }
+
         await deleteFile(imagePath)
     } catch (error) {
         console.error('Failed to delete uploaded image:', error)
@@ -329,61 +360,105 @@ export async function rejectSubmission(submissionId: string, reason: string): Pr
  */
 export async function getSubmissions(status?: SubmissionStatus) {
     try {
+        // Secure action: Only admins can view all submissions
+        await requireAdmin()
+
         let query = adminDb.collection('submissions').orderBy('createdAt', 'desc')
         if (status) { // orderBy status needs index if mixed with createdAt
             query = query.where('status', '==', status)
         }
 
         const snapshot = await query.get()
+        const submissionsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SubmissionDoc & { id: string }))
 
-        // Manual "Join"
-        const submissions = await Promise.all(snapshot.docs.map(async (doc) => {
-            const data = doc.data() as SubmissionDoc
+        if (submissionsData.length === 0) return []
 
-            // Fetch submitter
-            const submitterSnap = await adminDb.collection('users').doc(data.submitterId).get()
-            const submitter = submitterSnap.exists ? submitterSnap.data() : { name: 'Unknown', email: 'unknown' }
+        // Collect all unique IDs
+        const userIds = new Set<string>()
+        const pairingIds = new Set<string>()
+        const bonusIds = new Set<string>()
 
-            // Fetch pairing and family
-            const pairingSnap = await adminDb.collection('pairings').doc(data.pairingId).get()
+        submissionsData.forEach(sub => {
+            if (sub.submitterId) userIds.add(sub.submitterId)
+            if (sub.pairingId) pairingIds.add(sub.pairingId)
+            if (sub.bonusActivityIds) sub.bonusActivityIds.forEach(id => bonusIds.add(id))
+        })
+
+        // Batch Fetch Helpers
+        // Firestore getAll supports up to 100 args usually, need to chunk if huge, but fine for now
+        const fetchDocs = async (collection: string, ids: Set<string>) => {
+            const uniqueIds = Array.from(ids)
+            if (uniqueIds.length === 0) return new Map()
+
+            const refs = uniqueIds.map(id => adminDb.collection(collection).doc(id))
+            const snaps = await adminDb.getAll(...refs)
+
+            const map = new Map<string, any>()
+            snaps.forEach(snap => {
+                if (snap.exists) map.set(snap.id, snap.data())
+            })
+            return map
+        }
+
+        const [usersMap, pairingsMap, bonusesMap] = await Promise.all([
+            fetchDocs('users', userIds),
+            fetchDocs('pairings', pairingIds),
+            fetchDocs('bonusActivities', bonusIds)
+        ])
+
+        // Need secondary fetch for Families and Mentors (from pairings)
+        const familyIds = new Set<string>()
+        const mentorIds = new Set<string>()
+
+        pairingsMap.forEach((pairing: PairingDoc) => {
+            if (pairing.familyId) familyIds.add(pairing.familyId)
+            if (pairing.mentorId) mentorIds.add(pairing.mentorId)
+        })
+
+        // Fetch secondary relations
+        // We can reuse usersMap if mentors are already there, but safe to fetch again or merge
+        // Let's just fetch missing mentors to be safe/simple
+        const missingMentorIds = new Set<string>()
+        mentorIds.forEach(id => {
+            if (!usersMap.has(id)) missingMentorIds.add(id)
+        })
+
+        const [familiesMap, extraMentorsMap] = await Promise.all([
+            fetchDocs('families', familyIds),
+            fetchDocs('users', missingMentorIds)
+        ])
+
+        // Merge mentors
+        extraMentorsMap.forEach((data, id) => usersMap.set(id, data))
+
+        // Map data back to submissions
+        const submissions = submissionsData.map(sub => {
+            const submitter = usersMap.get(sub.submitterId) || { name: 'Unknown', email: 'unknown' }
+
             let pairingData = null
-            if (pairingSnap.exists) {
-                const pd = pairingSnap.data() as PairingDoc
-                // Fetch family
-                const familySnap = await adminDb.collection('families').doc(pd.familyId).get()
-                const family = familySnap.exists ? familySnap.data() : { name: 'Unknown Family' }
-
-                // Fetch mentor
-                const mentorSnap = await adminDb.collection('users').doc(pd.mentorId).get()
-                const mentor = mentorSnap.exists ? mentorSnap.data() : { name: 'Unknown Mentor' }
-
-                pairingData = { ...pd, id: pairingSnap.id, family, mentor }
+            if (sub.pairingId && pairingsMap.has(sub.pairingId)) {
+                const p = pairingsMap.get(sub.pairingId)
+                const family = familiesMap.get(p.familyId) || { name: 'Unknown Family' }
+                const mentor = usersMap.get(p.mentorId) || { name: 'Unknown Mentor' }
+                pairingData = { ...p, id: sub.pairingId, family, mentor }
             }
 
-            // Fetch bonuses
-            let bonusActivities: any[] = []
-            if (data.bonusActivityIds && data.bonusActivityIds.length > 0) {
-                // Optimization: Could batch fetch all unique bonus IDs first
-                // For now, per row fetch is simpler but slower
-                const bonuses = await Promise.all(data.bonusActivityIds.map(async (id) => {
-                    const b = await adminDb.collection('bonusActivities').doc(id).get()
-                    return b.exists ? { ...b.data(), id } : null
-                }))
-                bonusActivities = bonuses.filter(Boolean).map(b => ({ bonusActivity: b }))
-            }
+            const bonusActivities = (sub.bonusActivityIds || []).map(id => {
+                const b = bonusesMap.get(id)
+                return b ? { bonusActivity: { ...b, id } } : null
+            }).filter(Boolean)
 
             return {
-                ...data,
-                id: doc.id,
-                submitter: { ...submitter, id: data.submitterId },
+                ...sub,
+                submitter: { ...submitter, id: sub.submitterId },
                 pairing: pairingData,
                 bonusActivities,
-                // Serialize dates for client
-                createdAt: data.createdAt.toDate(),
-                updatedAt: data.updatedAt.toDate(),
-                reviewedAt: data.reviewedAt?.toDate() || null
+                // Serialize dates
+                createdAt: sub.createdAt.toDate(),
+                updatedAt: sub.updatedAt.toDate(),
+                reviewedAt: sub.reviewedAt?.toDate() || null
             }
-        }))
+        })
 
         return submissions
     } catch (error) {

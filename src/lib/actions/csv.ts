@@ -123,13 +123,14 @@ export async function importUsersFromCSV(csvContent: string): Promise<CSVImportR
             // We should use `adminAuth.createUser` here.
 
             try {
-                // Requires importing adminAuth from firebase-admin
-                const { adminAuth } = require('@/lib/firebase-admin')
+                // Use the exported adminAuth instance
+                const { adminAuth } = await import('@/lib/firebase-admin')
+
                 const userRecord = await adminAuth.createUser({
                     email,
                     displayName: name,
                     emailVerified: false,
-                    password: 'temporaryPassword123' // They should reset it
+                    // No password set - user must use "Forgot Password" or login link
                 })
 
                 const newUserRef = adminDb.collection('users').doc(userRecord.uid)

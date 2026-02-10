@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { NavbarWithAuthClient, Footer } from '@/components/layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -165,6 +165,39 @@ export default function ApplyPage() {
     const [formData, setFormData] = useState<FormData>(initialFormData)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isSubmitted, setIsSubmitted] = useState(false)
+    const [isLoaded, setIsLoaded] = useState(false)
+
+    // Load saved data on mount
+    useEffect(() => {
+        const savedData = localStorage.getItem('ace-application-form')
+        const savedStep = localStorage.getItem('ace-application-step')
+
+        if (savedData) {
+            try {
+                setFormData(JSON.parse(savedData))
+            } catch (e) {
+                console.error('Failed to parse saved form data', e)
+            }
+        }
+
+        if (savedStep) {
+            try {
+                setStep(parseInt(savedStep, 10))
+            } catch (e) {
+                console.error('Failed to parse saved step', e)
+            }
+        }
+
+        setIsLoaded(true)
+    }, [])
+
+    // Save data on change
+    useEffect(() => {
+        if (isLoaded) {
+            localStorage.setItem('ace-application-form', JSON.stringify(formData))
+            localStorage.setItem('ace-application-step', step.toString())
+        }
+    }, [formData, step, isLoaded])
 
     const update = (field: keyof FormData, value: any) => {
         setFormData((prev) => ({ ...prev, [field]: value }))
@@ -269,6 +302,10 @@ export default function ApplyPage() {
             })
 
             if (result.success) {
+                // Clear saved data on success
+                localStorage.removeItem('ace-application-form')
+                localStorage.removeItem('ace-application-step')
+
                 setIsSubmitted(true)
                 window.scrollTo({ top: 0, behavior: 'smooth' })
             } else {
