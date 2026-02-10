@@ -59,16 +59,6 @@ export function Footer() {
                         <h3 className="font-semibold mb-4 text-foreground">Resources</h3>
                         <ul className="space-y-2 text-sm text-muted-foreground">
                             <li>
-                                <a
-                                    href="https://vsam.umn.edu"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="hover:text-primary transition-colors"
-                                >
-                                    VSAM Website
-                                </a>
-                            </li>
-                            <li>
                                 <Link href="/login" className="hover:text-primary transition-colors">
                                     Member Login
                                 </Link>
