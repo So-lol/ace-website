@@ -1,8 +1,7 @@
 'use server'
 
 import { cookies } from 'next/headers'
-import { redirect } from 'next/navigation'
-import { verifyIdToken, createFirebaseUser, adminDb, createSessionCookie } from '@/lib/firebase-admin'
+import { verifyIdToken, adminDb, createSessionCookie } from '@/lib/firebase-admin'
 import { Timestamp } from 'firebase-admin/firestore'
 import { UserDoc } from '@/types/firestore'
 
@@ -15,15 +14,6 @@ type AuthResult = {
     user?: any // return user data for context
 }
 
-export async function getCurrentUser(): Promise<UserDoc | null> {
-    // Moved to auth-helpers.ts generally, but kept here for specific logic if needed
-    // Ideally this should use getAuthenticatedUser from auth-helpers to stay DRY
-    // but for now we leave it to avoid breaking changes in this file structure
-    return null
-}
-
-// ... signUp function remains same ...
-
 /**
  * Called by client after successful Firebase login to sync session
  */
@@ -34,6 +24,11 @@ export async function verifyAndSyncUser(idToken: string): Promise<AuthResult> {
 
         if (error || !firebaseUser) {
             return { success: false, error: 'Invalid authentication token' }
+        }
+
+        // enforce email verification on server side
+        if (!firebaseUser.email_verified) {
+            return { success: false, error: 'Please verify your email address first.' }
         }
 
         // 2. Check if user exists in Firestore
@@ -91,18 +86,45 @@ export async function verifyAndSyncUser(idToken: string): Promise<AuthResult> {
     }
 }
 
+/**
+ * Create user profile in Firestore during signup.
+ * Called after Firebase Auth user is created so the Firestore doc exists
+ * before the user's first sign-in.
+ */
+export async function createUserProfile(idToken: string, name: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const { user: firebaseUser, error } = await verifyIdToken(idToken)
+
+        if (error || !firebaseUser) {
+            return { success: false, error: 'Invalid authentication token' }
+        }
+
+        const userRef = adminDb.collection('users').doc(firebaseUser.uid)
+        const userSnap = await userRef.get()
+
+        if (!userSnap.exists) {
+            const userData: UserDoc = {
+                uid: firebaseUser.uid,
+                email: firebaseUser.email || '',
+                name: name || firebaseUser.name || 'Unknown',
+                role: 'MENTEE',
+                familyId: null,
+                avatarUrl: firebaseUser.picture || null,
+                createdAt: Timestamp.now(),
+                updatedAt: Timestamp.now(),
+            }
+            await userRef.set(userData)
+        }
+
+        return { success: true }
+    } catch (error) {
+        console.error('Create user profile error:', error)
+        return { success: false, error: 'Failed to create user profile' }
+    }
+}
+
 export async function signOut() {
     const cookieStore = await cookies()
     cookieStore.delete('firebase-session')
     return { success: true, redirectTo: '/login' }
-}
-
-// User Profile Actions
-
-export async function updatePassword(password: string) {
-    // This needs to be handled client-side with Firebase SDK usually,
-    // Or server-side via Admin SDK if we trust the request.
-    // Since we don't handle "current password" verification easily server-side without re-auth,
-    // It's recommended to do this client-side.
-    return { success: false, error: 'Please update password via client SDK' }
 }

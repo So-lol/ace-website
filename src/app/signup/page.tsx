@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Cat, ArrowLeft, Loader2 } from 'lucide-react'
 import { auth } from '@/lib/firebase'
 import { createUserWithEmailAndPassword, sendEmailVerification, updateProfile } from 'firebase/auth'
+import { createUserProfile } from '@/lib/actions/auth'
 import { toast } from 'sonner'
 
 export default function SignupPage() {
@@ -54,15 +55,37 @@ export default function SignupPage() {
             // Update display name
             await updateProfile(user, { displayName: name })
 
+            // Create Firestore user document immediately so it exists before first sign-in
+            try {
+                const idToken = await user.getIdToken()
+                await createUserProfile(idToken, name)
+            } catch (profileError) {
+                // Non-fatal: the doc will be created lazily on first sign-in
+                console.error('Failed to create user profile (will retry on login):', profileError)
+            }
+
             // Send verification email
+            // handleCodeInApp: false means Firebase handles verification server-side,
+            // then redirects to the continueUrl (url) below after success
             await sendEmailVerification(user, {
                 url: `${window.location.origin}/login?message=email-verified`,
+                handleCodeInApp: false,
             })
 
             toast.success('Account created! Please verify your email.')
             router.push('/verify-email')
         } catch (error: any) {
-            console.error('Signup error:', error)
+            // Only log unexpected errors, not validation errors
+            const isValidationError = [
+                'auth/email-already-in-use',
+                'auth/invalid-email',
+                'auth/weak-password'
+            ].includes(error.code)
+
+            if (!isValidationError) {
+                console.error('Signup error:', error)
+            }
+
             if (error.code === 'auth/email-already-in-use') {
                 toast.error('This email is already registered. Please sign in.')
             } else if (error.code === 'auth/invalid-email') {

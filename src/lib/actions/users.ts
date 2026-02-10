@@ -1,7 +1,7 @@
 'use server'
 
 import { requireAdmin, getAuthenticatedUser } from '@/lib/auth-helpers'
-import { adminDb, deleteFirebaseUser, createFirebaseUser } from '@/lib/firebase-admin'
+import { adminDb, deleteFirebaseUser, createFirebaseUser, deleteFile } from '@/lib/firebase-admin'
 import { revalidatePath } from 'next/cache'
 import { UserDoc, FamilyDoc } from '@/types/firestore'
 import { logAuditAction } from '@/lib/actions/audit'
@@ -248,9 +248,6 @@ export async function updateUserRole(userId: string, role: UserRole) {
     }
 }
 
-/**
- * Delete user (admin only)
- */
 export async function deleteUser(userId: string) {
     try {
         const admin = await requireAdmin()
@@ -260,40 +257,137 @@ export async function deleteUser(userId: string) {
             return { success: false, error: 'You cannot delete your own account' }
         }
 
-        // Delete from Firebase Auth first (this is the operation more likely to fail)
+        // 0. Delete user's application(s)
+        const userDoc = await adminDb.collection('users').doc(userId).get()
+        if (userDoc.exists) {
+            const userEmail = userDoc.data()?.email
+            if (userEmail) {
+                const appsSnap = await adminDb.collection('aceApplications')
+                    .where('email', '==', userEmail.toLowerCase())
+                    .get()
+
+                for (const appDoc of appsSnap.docs) {
+                    await appDoc.ref.delete()
+                }
+            }
+        }
+
+        // 1. Delete user's submissions and their images from storage
+        const submissionsSnap = await adminDb.collection('submissions')
+            .where('submitterId', '==', userId)
+            .get()
+
+        for (const doc of submissionsSnap.docs) {
+            const data = doc.data()
+            // Delete image from storage
+            if (data.imagePath) {
+                try {
+                    await deleteFile(data.imagePath)
+                } catch (error) {
+                    console.error(`Failed to delete image ${data.imagePath}:`, error)
+                    // Continue anyway - file might not exist
+                }
+            }
+            await doc.ref.delete()
+        }
+
+        // 2. Handle pairings where user is mentor (delete entire pairing)
+        const mentorPairingsSnap = await adminDb.collection('pairings')
+            .where('mentorId', '==', userId)
+            .get()
+
+        for (const pairingDoc of mentorPairingsSnap.docs) {
+            // Delete all submissions for this pairing
+            const pairingSubmissionsSnap = await adminDb.collection('submissions')
+                .where('pairingId', '==', pairingDoc.id)
+                .get()
+
+            for (const subDoc of pairingSubmissionsSnap.docs) {
+                const data = subDoc.data()
+                if (data.imagePath) {
+                    try {
+                        await deleteFile(data.imagePath)
+                    } catch (error) {
+                        console.error(`Failed to delete image ${data.imagePath}:`, error)
+                    }
+                }
+                await subDoc.ref.delete()
+            }
+
+            // Delete the pairing
+            await pairingDoc.ref.delete()
+        }
+
+        // 3. Handle pairings where user is mentee
+        const menteePairingsSnap = await adminDb.collection('pairings')
+            .where('menteeIds', 'array-contains', userId)
+            .get()
+
+        for (const pairingDoc of menteePairingsSnap.docs) {
+            const menteeIds = pairingDoc.data().menteeIds || []
+            const updatedMenteeIds = menteeIds.filter((id: string) => id !== userId)
+
+            if (updatedMenteeIds.length === 0) {
+                // No mentees left, delete the pairing
+                await pairingDoc.ref.delete()
+            } else {
+                // Update to remove this mentee
+                await pairingDoc.ref.update({
+                    menteeIds: updatedMenteeIds,
+                    updatedAt: Timestamp.now()
+                })
+            }
+        }
+
+        // 4. Handle families
+        const familiesSnap = await adminDb.collection('families')
+            .where('memberIds', 'array-contains', userId)
+            .get()
+
+        for (const familyDoc of familiesSnap.docs) {
+            const familyData = familyDoc.data()
+            const memberIds = (familyData.memberIds || []).filter((id: string) => id !== userId)
+            const familyHeadIds = (familyData.familyHeadIds || []).filter((id: string) => id !== userId)
+            const auntUncleIds = (familyData.auntUncleIds || []).filter((id: string) => id !== userId)
+
+            if (memberIds.length === 0) {
+                // Family is now empty, delete it
+                await familyDoc.ref.delete()
+            } else {
+                // Update family to remove user from all arrays
+                await familyDoc.ref.update({
+                    memberIds,
+                    familyHeadIds,
+                    auntUncleIds,
+                    updatedAt: Timestamp.now()
+                })
+            }
+        }
+
+        // 5. Delete from Firebase Auth
         const authResult = await deleteFirebaseUser(userId)
         if (!authResult.success) {
             console.error('Failed to delete user from Firebase Auth:', authResult.error)
             // Continue anyway - user might not exist in Auth but exists in Firestore
         }
 
-        // Delete from Firestore
+        // 6. Delete user document from Firestore
         await adminDb.collection('users').doc(userId).delete()
 
-        // Also remove user from any family memberIds
-        const familiesSnap = await adminDb.collection('families')
-            .where('memberIds', 'array-contains', userId)
-            .get()
-
-        for (const doc of familiesSnap.docs) {
-            const memberIds = doc.data().memberIds || []
-            await doc.ref.update({
-                memberIds: memberIds.filter((id: string) => id !== userId),
-                updatedAt: Timestamp.now()
-            })
-        }
-
+        // 7. Revalidate all affected paths
         revalidatePath('/admin/users')
         revalidatePath('/admin/families')
-        revalidatePath('/admin/users')
-        revalidatePath('/admin/families')
+        revalidatePath('/admin/pairings')
+        revalidatePath('/admin/submissions')
+        revalidatePath('/leaderboard')
 
+        // 8. Audit log
         await logAuditAction(
             admin.id,
             'DELETE',
             'USER',
             userId,
-            `Deleted user`,
+            `Deleted user and cascaded to pairings, families, and submissions`,
             undefined,
             admin.email
         )

@@ -60,16 +60,13 @@ export function Navbar({ user }: NavbarProps) {
             await firebaseSignOut(auth)
 
             // 2. Sign out from Server Session
-            const result = await signOut()
+            await signOut()
 
-            if (result.success && result.redirectTo) {
-                router.push(result.redirectTo)
-                router.refresh()
-            }
+            // 3. Full page navigation for reliable redirect (same pattern as login)
+            window.location.href = '/login'
         } catch (error) {
             console.error('Error signing out:', error)
-            // Fallback
-            router.push('/login')
+            window.location.href = '/login'
         }
     }
 

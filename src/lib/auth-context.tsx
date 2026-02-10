@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react'
 import { auth } from '@/lib/firebase'
 import { onIdTokenChanged, User as FirebaseUser } from 'firebase/auth'
 import { verifyAndSyncUser } from '@/lib/actions/auth'
@@ -18,6 +18,7 @@ interface AuthContextType {
     isLoading: boolean
     refreshUser: () => Promise<void>
     getIdToken: () => Promise<string | null>
+    skipNextSync: () => void
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -26,6 +27,7 @@ const AuthContext = createContext<AuthContextType>({
     isLoading: true,
     refreshUser: async () => { },
     getIdToken: async () => null,
+    skipNextSync: () => { },
 })
 
 export function useAuth() {
@@ -37,10 +39,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null)
     const [isLoading, setIsLoading] = useState(true)
     const [mounted, setMounted] = useState(false)
+    // Timestamp-based skip: ignore onIdTokenChanged calls within 5s of login
+    const skipUntilRef = useRef<number>(0)
 
     useEffect(() => {
         setMounted(true)
-        // Cleanup function for onIdTokenChanged is handled in the other useEffect
     }, [])
 
     const getIdToken = async (): Promise<string | null> => {
@@ -51,6 +54,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error('Error getting ID token:', error)
             return null
         }
+    }
+
+    // Call this before login to prevent onIdTokenChanged from racing
+    // Uses a timestamp so multiple re-renders can't consume the flag
+    const skipNextSync = () => {
+        skipUntilRef.current = Date.now() + 5000 // Skip for 5 seconds
     }
 
     const refreshUser = async () => {
@@ -64,8 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setFirebaseUser(currentUser)
 
             if (currentUser) {
-                // Fetch user profile from API with ID token
-                const idToken = await currentUser.getIdToken(true) // Force refresh to ensure latest claims
+                const idToken = await currentUser.getIdToken(true)
                 const result = await verifyAndSyncUser(idToken)
 
                 if (result.success && result.user) {
@@ -90,12 +98,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const unsubscribe = onIdTokenChanged(auth, async (fbUser) => {
             setFirebaseUser(fbUser)
+
+            // If login form is handling the sync, skip this callback.
+            // The timestamp approach is more robust than a boolean flag
+            // because React re-renders can't accidentally consume it.
+            if (Date.now() < skipUntilRef.current) {
+                if (!fbUser) setUser(null)
+                setIsLoading(false)
+                return
+            }
+
             if (fbUser) {
                 try {
-                    // This creates a reliable sync: 
-                    // 1. Get fresh token
-                    // 2. Send to server to update cookie (handles expiration)
-                    // 3. Get fresh user data
+                    // Only sync user state — do NOT create a new session cookie
+                    // on every token change. Cookie creation belongs to the login form.
                     const idToken = await fbUser.getIdToken()
                     const result = await verifyAndSyncUser(idToken)
 
@@ -103,8 +119,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                         setUser(result.user)
                     } else {
                         console.error('Failed to sync user session:', result.error)
-                        // Don't clear user immediately to avoid flickering if it's just a transient error?
-                        // But if token is invalid, we should probably clear.
                         if (result.error === 'Invalid authentication token') {
                             setUser(null)
                         }
@@ -114,8 +128,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 }
             } else {
                 setUser(null)
-                // Optional: Call server to clear cookie? 
-                // signOut() handles consistent logout.
             }
             setIsLoading(false)
         })
@@ -124,7 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, [mounted])
 
     return (
-        <AuthContext.Provider value={{ user, firebaseUser, isLoading, refreshUser, getIdToken }}>
+        <AuthContext.Provider value={{ user, firebaseUser, isLoading, refreshUser, getIdToken, skipNextSync }}>
             {children}
         </AuthContext.Provider>
     )

@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Cat, ArrowLeft, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { verifyAndSyncUser } from '@/lib/actions/auth'
+import { useAuth } from '@/lib/auth-context'
 import { auth } from '@/lib/firebase'
 import { signInWithEmailAndPassword } from 'firebase/auth'
 import { toast } from 'sonner'
@@ -17,6 +18,7 @@ import { toast } from 'sonner'
 function LoginForm() {
     const router = useRouter()
     const searchParams = useSearchParams()
+    const { skipNextSync } = useAuth()
     const [isLoading, setIsLoading] = useState(false)
     const redirectPath = searchParams.get('redirect')
     const message = searchParams.get('message')
@@ -37,6 +39,10 @@ function LoginForm() {
         }
 
         try {
+            // Tell AuthContext to skip the next onIdTokenChanged sync
+            // so it doesn't race with our verifyAndSyncUser call below
+            skipNextSync()
+
             // Sign in with Firebase client SDK
             const userCredential = await signInWithEmailAndPassword(auth, email.toLowerCase(), password)
             const user = userCredential.user
@@ -44,6 +50,7 @@ function LoginForm() {
             // Check if email is verified
             if (!user.emailVerified) {
                 toast.error('Please verify your email address first.')
+                setIsLoading(false)
                 router.push('/verify-email')
                 return
             }
@@ -55,22 +62,27 @@ function LoginForm() {
 
             if (result.success) {
                 toast.success('Signed in successfully!')
-                router.push(redirectPath || result.redirectTo || '/dashboard')
-                router.refresh()
+                // Use window.location for reliable redirect after login
+                // This forces a full page load, ensuring middleware re-evaluates the cookie
+                window.location.href = redirectPath || result.redirectTo || '/dashboard'
+                return // Exit early - don't run any more code
             } else {
                 toast.error(result.error || 'Failed to sign in')
+                setIsLoading(false)
             }
-        } catch (err: unknown) {
+        } catch (err: any) {
             console.error('Sign in error:', err)
-            const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred'
-            if (errorMessage.includes('auth/invalid-credential') || errorMessage.includes('auth/user-not-found') || errorMessage.includes('auth/wrong-password')) {
+            const errorCode = err.code || ''
+
+            if (errorCode === 'auth/invalid-credential' || errorCode === 'auth/user-not-found' || errorCode === 'auth/wrong-password') {
                 toast.error('Invalid email or password')
-            } else if (errorMessage.includes('auth/too-many-requests')) {
+            } else if (errorCode === 'auth/too-many-requests') {
                 toast.error('Too many failed attempts. Please try again later.')
+            } else if (errorCode === 'auth/user-disabled') {
+                toast.error('This account has been disabled.')
             } else {
-                toast.error('Failed to sign in. Please try again.')
+                toast.error(`Sign in error: ${err.message || 'An unexpected error occurred'}`)
             }
-        } finally {
             setIsLoading(false)
         }
     }
@@ -132,6 +144,16 @@ function LoginForm() {
                             <div className="text-sm text-green-800 dark:text-green-200">
                                 <p className="font-medium">Email Verified!</p>
                                 <p>Your email has been verified. You can now sign in.</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {message === 'password-reset-success' && (
+                        <div className="mb-6 p-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg flex gap-3">
+                            <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
+                            <div className="text-sm text-green-800 dark:text-green-200">
+                                <p className="font-medium">Password Changed!</p>
+                                <p>Your password has been updated successfully. Please sign in with your new password.</p>
                             </div>
                         </div>
                     )}

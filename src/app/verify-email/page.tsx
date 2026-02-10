@@ -48,7 +48,7 @@ export default function VerifyEmailPage() {
         }
     }, [countdown])
 
-    // Poll for verification status every 5 seconds
+    // Poll for verification status every 3 seconds (faster detection)
     useEffect(() => {
         if (isVerified) return
 
@@ -65,7 +65,7 @@ export default function VerifyEmailPage() {
                     }, 2000)
                 }
             }
-        }, 5000)
+        }, 3000) // Reduced from 5s to 3s for faster detection
 
         return () => clearInterval(interval)
     }, [isVerified, router])
@@ -82,6 +82,7 @@ export default function VerifyEmailPage() {
         try {
             await sendEmailVerification(user, {
                 url: `${window.location.origin}/login?message=email-verified`,
+                handleCodeInApp: false,
             })
             toast.success('Verification email sent! Check your inbox.')
             setCountdown(60) // 60 second cooldown
@@ -140,7 +141,7 @@ export default function VerifyEmailPage() {
 
                     <Card className="doraemon-shadow">
                         <CardHeader className="text-center">
-                            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4 animate-pulse">
                                 <Mail className="w-8 h-8 text-primary" />
                             </div>
                             <CardTitle>Verify Your Email</CardTitle>
@@ -157,10 +158,24 @@ export default function VerifyEmailPage() {
                             )}
 
                             <div className="space-y-3">
-                                <p className="text-sm text-muted-foreground text-center">
-                                    Click the link in the email to verify your account.
-                                    Check your spam folder if you don&apos;t see it.
-                                </p>
+                                <div className="text-center py-3">
+                                    <p className="text-sm font-medium text-primary mb-2 animate-pulse">
+                                        ⏳ Waiting for verification...
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                        Checking every 3 seconds
+                                    </p>
+                                </div>
+
+                                <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
+                                    <p className="text-sm font-medium mb-2">📧 Helpful Tips:</p>
+                                    <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+                                        <li>Check your spam or junk folder</li>
+                                        <li>Add noreply@ace-website.com to your contacts</li>
+                                        <li>The link expires after 24 hours</li>
+                                        <li>Keep this page open to auto-detect verification</li>
+                                    </ul>
+                                </div>
 
                                 <Button
                                     onClick={handleResendEmail}

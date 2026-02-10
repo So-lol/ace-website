@@ -1,0 +1,26 @@
+﻿
+Running 1 test using 1 worker
+
+  Γ£ÿ  1 [chromium] ΓÇ║ tests\auth.spec.ts:4:9 ΓÇ║ Authentication Flow ΓÇ║ Signup page renders and validates inputs (40.1s)
+
+
+  1) [chromium] ΓÇ║ tests\auth.spec.ts:4:9 ΓÇ║ Authentication Flow ΓÇ║ Signup page renders and validates inputs 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: page.goto: net::ERR_ABORTED; maybe frame was detached?
+    Call log:
+    [2m  - navigating to "http://localhost:3000/signup", waiting until "load"[22m
+
+
+      3 | test.describe('Authentication Flow', () => {
+      4 |     test('Signup page renders and validates inputs', async ({ page }) => {
+    > 5 |         await page.goto('/signup');
+        |                    ^
+      6 |
+      7 |         // Verify title
+      8 |         await expect(page).toHaveTitle(/Sign Up/);
+        at C:\Users\lev52\Desktop\ace-website\tests\auth.spec.ts:5:20
+
+  1 failed
+    [chromium] ΓÇ║ tests\auth.spec.ts:4:9 ΓÇ║ Authentication Flow ΓÇ║ Signup page renders and validates inputs 

@@ -16,7 +16,7 @@ import {
     XCircle,
     CalendarDays
 } from 'lucide-react'
-import { getCurrentUser } from '@/lib/actions/auth'
+import { getAuthenticatedUser } from '@/lib/auth-helpers'
 import { getUserProfile } from '@/lib/actions/users'
 import { getUserStats } from '@/lib/actions/stats'
 import { getUserSubmissions } from '@/lib/actions/submissions'
@@ -41,16 +41,16 @@ function getStatusBadge(status: string) {
 }
 
 export default async function DashboardPage() {
-    const user = await getCurrentUser()
+    const user = await getAuthenticatedUser()
 
     if (!user) {
         redirect('/login')
     }
 
     const [profile, stats, submissions, bonusActivities] = await Promise.all([
-        getUserProfile(user.uid),
-        getUserStats(user.uid),
-        getUserSubmissions(user.uid),
+        getUserProfile(user.id),
+        getUserStats(user.id),
+        getUserSubmissions(user.id),
         getBonusActivities(true)
     ])
 

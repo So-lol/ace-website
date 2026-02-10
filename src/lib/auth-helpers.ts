@@ -24,6 +24,12 @@ export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> 
         const { user: firebaseAuthUser, error } = await verifySessionCookie(sessionCookie)
         if (error || !firebaseAuthUser) return null
 
+        // Extra safety check: ensure email is verified
+        if (!firebaseAuthUser.email_verified) {
+            console.warn(`User ${firebaseAuthUser.uid} has active session but email not verified.`)
+            return null
+        }
+
         // 2. Fetch User Data from Firestore
         const userDoc = await adminDb.collection('users').doc(firebaseAuthUser.uid).get()
 

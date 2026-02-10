@@ -1,7 +1,7 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
-import { requireAdmin } from '@/lib/auth-helpers'
+import { requireAdmin, getAuthenticatedUser } from '@/lib/auth-helpers'
 import { AceApplicationDoc } from '@/types/firestore'
 import { AceApplication, AceRole } from '@/types/index'
 import { Timestamp } from 'firebase-admin/firestore'
@@ -58,6 +58,12 @@ interface SubmitAceApplicationInput {
 
 export async function submitAceApplication(input: SubmitAceApplicationInput) {
     try {
+        // Verify the user is authenticated
+        const authUser = await getAuthenticatedUser()
+        if (!authUser) {
+            return { success: false, error: 'You must be signed in to submit an application.' }
+        }
+
         // Basic validation
         if (!input.name || !input.email || !input.phone || !input.role) {
             return { success: false, error: 'Please fill in all required fields.' }
