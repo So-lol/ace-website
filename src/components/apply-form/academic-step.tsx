@@ -23,9 +23,14 @@ export function AcademicStep({ formData, update }: AcademicStepProps) {
                     <GraduationCap className="w-5 h-5 text-primary" />
                     📚 Academic Questions
                 </h2>
-                <p className="text-sm text-muted-foreground">
-                    The more intentional your answers are, the easier it is for us to pair you!
-                </p>
+                <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-950/30 border-l-4 border-primary rounded-r-lg flex items-start gap-3 group transition-all duration-300 hover:bg-blue-100 dark:hover:bg-blue-900/40">
+                    <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                        <span className="text-lg">💡</span>
+                    </div>
+                    <p className="text-sm text-blue-800 dark:text-blue-200 font-medium leading-relaxed italic">
+                        The more intentional your answers are, the easier it is for us to pair you!
+                    </p>
+                </div>
             </div>
             <div className="space-y-2">
                 <Label>What university do you go to? *</Label>
