@@ -1,10 +1,10 @@
 import { Timestamp } from 'firebase-admin/firestore'
+import { UserRole, SubmissionStatus } from './enums'
 
 // ======================
 // ENUMS / UNIONS
 // ======================
-export type UserRole = 'ADMIN' | 'MENTOR' | 'MENTEE'
-export type SubmissionStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
+// Definitions moved to enums.ts
 
 // ======================
 // COLLECTIONS

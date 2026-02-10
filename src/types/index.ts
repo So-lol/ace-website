@@ -1,11 +1,10 @@
 // Safe Client Types (No firebase-admin imports)
+import { UserRole, SubmissionStatus, AdjustmentTargetType } from './enums'
 
 // ======================
 // ENUMS / UNIONS
 // ======================
-export type UserRole = 'ADMIN' | 'MENTOR' | 'MENTEE'
-export type SubmissionStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
-export type AdjustmentTargetType = 'SUBMISSION' | 'PAIRING' | 'FAMILY'
+// Definitions moved to enums.ts
 
 // ======================
 // BASE INTERFACES (Client-side representations)
