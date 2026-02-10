@@ -72,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const currentUser = auth.currentUser
             setFirebaseUser(currentUser)
 
-            if (currentUser) {
+            if (currentUser && currentUser.emailVerified) {
                 const idToken = await currentUser.getIdToken(true)
                 const result = await verifyAndSyncUser(idToken)
 
@@ -110,18 +110,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             if (fbUser) {
                 try {
-                    // Only sync user state — do NOT create a new session cookie
-                    // on every token change. Cookie creation belongs to the login form.
-                    const idToken = await fbUser.getIdToken()
-                    const result = await verifyAndSyncUser(idToken)
+                    // Only sync user state if email is verified.
+                    // If not verified, the server action will reject it and log an error anyway.
+                    if (fbUser.emailVerified) {
+                        // Force refresh to ensure token contains latest email_verified claim
+                        const idToken = await fbUser.getIdToken(true)
+                        const result = await verifyAndSyncUser(idToken)
 
-                    if (result.success && result.user) {
-                        setUser(result.user)
-                    } else {
-                        console.error('Failed to sync user session:', result.error)
-                        if (result.error === 'Invalid authentication token') {
-                            setUser(null)
+                        if (result.success && result.user) {
+                            setUser(result.user)
+                        } else {
+                            console.error('Failed to sync user session:', result.error)
+                            if (result.error === 'Invalid authentication token') {
+                                setUser(null)
+                            }
                         }
+                    } else {
+                        // User is signed in to Firebase but not verified yet.
+                        // We keep the firebaseUser state but leave the app user as null.
+                        setUser(null)
                     }
                 } catch (error) {
                     console.error('Error refreshing session:', error)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, Suspense } from 'react'
+import { useState, Suspense, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Navbar, Footer } from '@/components/layout'
@@ -18,18 +18,36 @@ import { toast } from 'sonner'
 function LoginForm() {
     const router = useRouter()
     const searchParams = useSearchParams()
-    const { skipNextSync } = useAuth()
+    const { user, skipNextSync } = useAuth()
     const [isLoading, setIsLoading] = useState(false)
     const redirectPath = searchParams.get('redirect')
     const message = searchParams.get('message')
     const error = searchParams.get('error')
+
+    // Security: Validate redirect path to prevent Open Redirect vulnerabilities
+    const safeRedirect = (path: string | null) => {
+        if (!path) return '/dashboard'
+        // Ensure path is relative and doesn't start with // (protocol relative)
+        if (path.startsWith('/') && !path.startsWith('//')) {
+            return path
+        }
+        return '/dashboard'
+    }
+
+    // Redirect if already logged in
+    useEffect(() => {
+        if (user && !isLoading) {
+            const target = safeRedirect(redirectPath)
+            router.push(target)
+        }
+    }, [user, isLoading, redirectPath, router])
 
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault()
         setIsLoading(true)
 
         const formData = new FormData(e.currentTarget)
-        const email = formData.get('email') as string
+        const email = (formData.get('email') as string).trim()
         const password = formData.get('password') as string
 
         if (!email || !password) {
@@ -62,16 +80,18 @@ function LoginForm() {
 
             if (result.success) {
                 toast.success('Signed in successfully!')
+
+                const targetPath = safeRedirect(redirectPath || result.redirectTo || null)
+
                 // Use window.location for reliable redirect after login
                 // This forces a full page load, ensuring middleware re-evaluates the cookie
-                window.location.href = redirectPath || result.redirectTo || '/dashboard'
+                window.location.href = targetPath
                 return // Exit early - don't run any more code
             } else {
                 toast.error(result.error || 'Failed to sign in')
                 setIsLoading(false)
             }
         } catch (err: any) {
-            console.error('Sign in error:', err)
             const errorCode = err.code || ''
 
             if (errorCode === 'auth/invalid-credential' || errorCode === 'auth/user-not-found' || errorCode === 'auth/wrong-password') {
@@ -81,6 +101,7 @@ function LoginForm() {
             } else if (errorCode === 'auth/user-disabled') {
                 toast.error('This account has been disabled.')
             } else {
+                console.error('Unexpected sign in error:', err)
                 toast.error(`Sign in error: ${err.message || 'An unexpected error occurred'}`)
             }
             setIsLoading(false)

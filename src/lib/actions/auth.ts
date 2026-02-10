@@ -1,9 +1,10 @@
 'use server'
 
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { verifyIdToken, adminDb, createSessionCookie } from '@/lib/firebase-admin'
 import { Timestamp } from 'firebase-admin/firestore'
 import { UserDoc } from '@/types/firestore'
+import { checkRateLimit } from '@/lib/rate-limit'
 
 // Types
 type AuthResult = {
@@ -19,6 +20,15 @@ type AuthResult = {
  */
 export async function verifyAndSyncUser(idToken: string): Promise<AuthResult> {
     try {
+        // 0. Rate Limiting (10 requests per minute per IP)
+        const headerList = await headers()
+        const ip = headerList.get('x-forwarded-for')?.split(',')[0] || 'unknown'
+        const { success } = await checkRateLimit(`auth_sync:${ip}`, 10, 60)
+
+        if (!success) {
+            return { success: false, error: 'Too many authentication attempts. Please try again in a minute.' }
+        }
+
         // 1. Verify the ID token first
         const { user: firebaseUser, error } = await verifyIdToken(idToken)
 
@@ -69,10 +79,13 @@ export async function verifyAndSyncUser(idToken: string): Promise<AuthResult> {
             name: 'firebase-session',
             value: sessionCookie,
             httpOnly: true,
+            // Security: Mandatory Secure flag in production. 
+            // In local dev, this requires HTTPS (e.g., via mkcert) to be true.
             secure: process.env.NODE_ENV === 'production',
             path: '/',
             maxAge: 60 * 60 * 24 * 5, // 5 days in seconds
-            sameSite: 'lax',
+            // Security: Upgrade from 'lax' to 'strict' for ruthless CSRF protection.
+            sameSite: 'strict',
         })
 
         // Return user data
