@@ -23,13 +23,18 @@ export function AcademicStep({ formData, update }: AcademicStepProps) {
                     <GraduationCap className="w-5 h-5 text-primary" />
                     📚 Academic Questions
                 </h2>
-                <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-950/30 border-l-4 border-primary rounded-r-lg flex items-start gap-3 group transition-all duration-300 hover:bg-blue-100 dark:hover:bg-blue-900/40">
-                    <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                        <span className="text-lg">💡</span>
+                <div className="mt-4 flex items-center gap-4 group">
+                    <div className="relative shrink-0 w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform duration-300 shadow-sm border border-blue-200 dark:border-blue-800">
+                        💡
                     </div>
-                    <p className="text-sm text-blue-800 dark:text-blue-200 font-medium leading-relaxed italic">
-                        The more intentional your answers are, the easier it is for us to pair you!
-                    </p>
+                    <div className="relative bg-blue-50 dark:bg-blue-950/40 p-4 rounded-2xl border border-blue-100 dark:border-blue-900 shadow-sm transition-all duration-300 hover:shadow-md hover:-translate-y-0.5 max-w-md">
+                        {/* Bubble tail */}
+                        <div className="absolute left-0 top-1/2 -translate-x-1.5 -translate-y-1/2 w-3 h-3 bg-blue-50 dark:bg-blue-950/40 border-l border-b border-blue-100 dark:border-blue-900 rotate-45" />
+
+                        <p className="text-sm text-blue-800 dark:text-blue-100 font-medium leading-relaxed italic relative z-10">
+                            "The more intentional your answers are, the easier it is for us to pair you!"
+                        </p>
+                    </div>
                 </div>
             </div>
             <div className="space-y-2">
