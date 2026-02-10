@@ -16,14 +16,14 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "VSAM ACE - Anh Chi Em Mentorship Program",
+    default: "VSAM ACE - Anh Chị Em Mentorship Program",
     template: "%s | VSAM ACE"
   },
-  description: "The Anh Chi Em (ACE) mentorship program connects Vietnamese students at the University of Minnesota through meaningful mentorship relationships.",
+  description: "The Anh Chị Em (ACE) mentorship program connects Vietnamese students at the University of Minnesota through meaningful mentorship relationships.",
   keywords: ["VSAM", "ACE", "Vietnamese", "University of Minnesota", "mentorship", "student organization"],
   authors: [{ name: "Vietnamese Student Association of Minnesota" }],
   openGraph: {
-    title: "VSAM ACE - Anh Chi Em Mentorship Program",
+    title: "VSAM ACE - Anh Chị Em Mentorship Program",
     description: "Connect with mentors and mentees in the Vietnamese student community at UMN",
     type: "website",
   },

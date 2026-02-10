@@ -17,12 +17,12 @@ export function Footer() {
                                     VSAM ACE
                                 </span>
                                 <p className="text-xs text-muted-foreground">
-                                    Anh Chi Em Program
+                                    Anh Chị Em Program
                                 </p>
                             </div>
                         </Link>
                         <p className="text-sm text-muted-foreground max-w-md">
-                            The Anh Chi Em (ACE) program connects Vietnamese students at the University of Minnesota
+                            The Anh Chị Em (ACE) program connects Vietnamese students at the University of Minnesota
                             through meaningful mentorship relationships, building a stronger community for all.
                         </p>
                     </div>

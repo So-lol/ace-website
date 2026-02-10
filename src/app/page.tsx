@@ -39,7 +39,7 @@ export default function HomePage() {
               {/* Title */}
               <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight">
                 <span className="bg-gradient-to-r from-[#0099D6] via-[#33ADDE] to-[#0077B3] bg-clip-text text-transparent">
-                  Anh Chi Em
+                  Anh Chị Em
                 </span>
                 <br />
                 <span className="text-foreground">Mentorship Program</span>

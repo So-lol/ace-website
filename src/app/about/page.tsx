@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button'
 
 export const metadata: Metadata = {
     title: 'About ACE',
-    description: 'Learn about the Anh Chi Em mentorship program and how it works',
+    description: 'Learn about the Anh Chị Em mentorship program and how it works',
 }
 
 export default function AboutPage() {
@@ -34,7 +34,7 @@ export default function AboutPage() {
                         </div>
                         <h1 className="text-4xl font-bold mb-4">About ACE</h1>
                         <p className="text-muted-foreground max-w-2xl mx-auto text-lg">
-                            Anh Chi Em (ACE) is VSAM&apos;s flagship mentorship program,
+                            Anh Chị Em (ACE) is VSAM&apos;s flagship mentorship program,
                             connecting Vietnamese students at the University of Minnesota.
                         </p>
                     </div>
@@ -44,7 +44,7 @@ export default function AboutPage() {
                         <Card className="overflow-hidden">
                             <div className="grid md:grid-cols-2">
                                 <div className="p-8 flex flex-col justify-center">
-                                    <h2 className="text-2xl font-bold mb-4">What is Anh Chi Em?</h2>
+                                    <h2 className="text-2xl font-bold mb-4">What is Anh Chị Em?</h2>
                                     <p className="text-muted-foreground mb-4">
                                         &quot;Anh Chị Em&quot; translates to &quot;Older Brother/Sister, Younger Sibling&quot;
                                         in Vietnamese. This program embodies the cultural value of family bonds

@@ -96,7 +96,7 @@ export function Navbar({ user }: NavbarProps) {
                             VSAM ACE
                         </span>
                         <p className="text-[10px] text-muted-foreground -mt-1">
-                            Anh Chi Em Program
+                            Anh Chị Em Program
                         </p>
                     </div>
                 </Link>

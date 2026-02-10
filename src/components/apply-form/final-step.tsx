@@ -21,7 +21,7 @@ export function FinalStep({ formData, update }: FinalStepProps) {
                 </p>
             </div>
             <div className="space-y-2">
-                <Label>Are you available for the reveal event on Friday, Oct 27th? *</Label>
+                <Label>Are you available for the reveal event on Friday, Feb 27th? *</Label>
                 <div className="flex gap-4">
                     {['Yes', 'No', 'Maybe'].map((opt) => (
                         <button
