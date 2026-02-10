@@ -78,34 +78,28 @@ export default function VerifyEmailPage() {
             return
         }
 
+        console.log('[VerifyEmail] Resending verification email…', {
+            uid: user.uid,
+            email: user.email,
+            emailVerified: user.emailVerified,
+            projectId: auth.app.options.projectId,
+        })
+
         setIsLoading(true)
         try {
-            // First try with actionCodeSettings (includes continue URL)
-            await sendEmailVerification(user, {
-                url: `${window.location.origin}/login?message=email-verified`,
-                handleCodeInApp: false,
-            })
-            toast.success('Verification email sent! Check your inbox.')
+            // Use bare sendEmailVerification — no actionCodeSettings
+            // This avoids auth/unauthorized-continue-uri errors from custom domains
+            await sendEmailVerification(user)
+            toast.success('Verification email sent! Check your inbox and spam folder.')
             setCountdown(60) // 60 second cooldown
+            console.log('[VerifyEmail] Verification email sent successfully')
         } catch (error: any) {
-            console.error('Error sending verification email:', error.code, error.message)
+            console.error('[VerifyEmail] sendEmailVerification failed:', error.code, error.message)
 
             if (error.code === 'auth/too-many-requests') {
                 toast.error('Firebase is rate-limiting email sends. Please wait 5-10 minutes before trying again.')
                 setCountdown(300) // 5 minute cooldown for rate limits
-            } else if (error.code === 'auth/unauthorized-continue-uri') {
-                // The continue URL domain is not authorized in Firebase Console
-                // Try sending without actionCodeSettings as a fallback
-                try {
-                    await sendEmailVerification(user)
-                    toast.success('Verification email sent! Check your inbox.')
-                    setCountdown(60)
-                } catch (fallbackError: any) {
-                    console.error('Fallback email send also failed:', fallbackError.code, fallbackError.message)
-                    toast.error(`Email send failed: ${fallbackError.code || fallbackError.message}`)
-                }
             } else {
-                // Show the actual error code so we can diagnose
                 toast.error(`Email send failed (${error.code}): ${error.message}`)
             }
         } finally {

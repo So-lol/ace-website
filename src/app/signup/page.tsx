@@ -48,47 +48,51 @@ export default function SignupPage() {
         }
 
         try {
-            // Create user with Firebase client SDK
+            // 1. Create user with Firebase client SDK
             const userCredential = await createUserWithEmailAndPassword(auth, email.toLowerCase(), password)
             const user = userCredential.user
 
-            // Update display name
-            await updateProfile(user, { displayName: name })
+            // 2. Send verification email IMMEDIATELY after creation
+            //    Do this before any other async work (updateProfile, createUserProfile)
+            //    to avoid token refreshes or state changes that could interfere.
+            //    Diagnostic: log user state at send time
+            console.log('[Signup] Sending verification email…', {
+                uid: user.uid,
+                email: user.email,
+                emailVerified: user.emailVerified,
+                projectId: auth.app.options.projectId,
+            })
 
-            // Create Firestore user document immediately so it exists before first sign-in
+            let emailSent = false
+            try {
+                await sendEmailVerification(user)
+                emailSent = true
+                console.log('[Signup] Verification email sent successfully')
+            } catch (emailError: any) {
+                console.error('[Signup] sendEmailVerification failed:', emailError.code, emailError.message)
+                toast.warning(`Could not send verification email (${emailError.code}). Use the resend button on the next page.`)
+            }
+
+            // 3. Update display name (non-blocking for verification)
+            try {
+                await updateProfile(user, { displayName: name })
+            } catch (profileUpdateError) {
+                console.error('[Signup] Failed to update display name:', profileUpdateError)
+            }
+
+            // 4. Create Firestore user document (non-blocking for verification)
             try {
                 const idToken = await user.getIdToken()
                 await createUserProfile(idToken, name)
             } catch (profileError) {
-                // Non-fatal: the doc will be created lazily on first sign-in
-                console.error('Failed to create user profile (will retry on login):', profileError)
+                console.error('[Signup] Failed to create user profile (will retry on login):', profileError)
             }
 
-            // Send verification email
-            // handleCodeInApp: false means Firebase handles verification server-side,
-            // then redirects to the continueUrl (url) below after success
-            try {
-                await sendEmailVerification(user, {
-                    url: `${window.location.origin}/login?message=email-verified`,
-                    handleCodeInApp: false,
-                })
-            } catch (emailError: any) {
-                console.error('Failed to send verification email:', emailError.code, emailError.message)
-
-                if (emailError.code === 'auth/unauthorized-continue-uri') {
-                    // Domain not authorized — try without actionCodeSettings
-                    try {
-                        await sendEmailVerification(user)
-                    } catch (fallbackError: any) {
-                        console.error('Fallback email send also failed:', fallbackError.code, fallbackError.message)
-                        toast.warning(`Could not send verification email (${fallbackError.code}). Use the resend button on the next page.`)
-                    }
-                } else {
-                    toast.warning(`Could not send verification email (${emailError.code}). Use the resend button on the next page.`)
-                }
+            if (emailSent) {
+                toast.success('Account created! Check your email for a verification link.')
+            } else {
+                toast.success('Account created! Click "Resend" on the next page to get your verification email.')
             }
-
-            toast.success('Account created! Please verify your email.')
             router.push('/verify-email')
         } catch (error: any) {
             // Only log unexpected errors, not validation errors
