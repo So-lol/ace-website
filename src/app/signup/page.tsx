@@ -67,10 +67,15 @@ export default function SignupPage() {
             // Send verification email
             // handleCodeInApp: false means Firebase handles verification server-side,
             // then redirects to the continueUrl (url) below after success
-            await sendEmailVerification(user, {
-                url: `${window.location.origin}/login?message=email-verified`,
-                handleCodeInApp: false,
-            })
+            try {
+                await sendEmailVerification(user, {
+                    url: `${window.location.origin}/login?message=email-verified`,
+                    handleCodeInApp: false,
+                })
+            } catch (emailError) {
+                // Non-fatal: user can resend from the verify-email page
+                console.error('Failed to send verification email (can resend):', emailError)
+            }
 
             toast.success('Account created! Please verify your email.')
             router.push('/verify-email')
