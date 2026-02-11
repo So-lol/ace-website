@@ -19,6 +19,10 @@ export interface UserDoc {
     role: UserRole
     familyId: string | null
     avatarUrl: string | null
+    pronouns?: string
+    phone?: string
+    socialLinks?: string[]
+    majorsMinors?: string
     createdAt: Timestamp
     updatedAt: Timestamp
 }

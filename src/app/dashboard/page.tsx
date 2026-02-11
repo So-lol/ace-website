@@ -14,7 +14,7 @@ import {
     Clock,
     CheckCircle2,
     XCircle,
-    CalendarDays
+    CalendarDays,
 } from 'lucide-react'
 import { getAuthenticatedUser } from '@/lib/auth-helpers'
 import { getUserProfile } from '@/lib/actions/users'
@@ -62,7 +62,7 @@ export default async function DashboardPage() {
 
     // Profile Fallbacks
     const familyName = profile?.family?.name || 'No Family'
-    const familyRank = profile?.family?.rank || '-' // Rank logic needs to be computed/stored
+    const familyRank = profile?.family?.rank || '-'
     const mentees = profile?.pairing?.mentees || []
     const menteeNames = mentees.length > 0 ? mentees.join(' & ') : 'No Mentees'
 
@@ -73,203 +73,206 @@ export default async function DashboardPage() {
             <main className="flex-1 py-8">
                 <div className="container mx-auto px-4">
                     {/* Welcome Header */}
-                    <div className="mb-8">
-                        <h1 className="text-3xl font-bold mb-2">
-                            Welcome back, {user.name.split(' ')[0]}! 👋
-                        </h1>
-                        <p className="text-muted-foreground">
-                            {user.role === 'MENTOR' ? 'Anh/Chị' : 'Em'} • {familyName}
-                        </p>
+                    <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+                        <div>
+                            <h1 className="text-3xl font-bold mb-2">
+                                Welcome back, {user.name.split(' ')[0]}! 👋
+                            </h1>
+                            <p className="text-muted-foreground">
+                                {user.role === 'MENTOR' ? 'Anh/Chị' : 'Em'} • {familyName}
+                            </p>
+                        </div>
                     </div>
 
-                    {/* Quick Stats */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                        <Card>
-                            <CardContent className="pt-6">
-                                <div className="text-center">
-                                    <CalendarDays className="w-8 h-8 mx-auto mb-2 text-primary" />
-                                    <div className="text-2xl font-bold">Week {weekNumber}</div>
-                                    <div className="text-xs text-muted-foreground">Current Week</div>
-                                </div>
-                            </CardContent>
-                        </Card>
-
-                        <Card>
-                            <CardContent className="pt-6">
-                                <div className="text-center">
-                                    <Trophy className="w-8 h-8 mx-auto mb-2 text-[#FFD700]" />
-                                    <div className="text-2xl font-bold">{stats.totalPoints}</div>
-                                    <div className="text-xs text-muted-foreground">Total Points</div>
-                                </div>
-                            </CardContent>
-                        </Card>
-
-                        <Card>
-                            <CardContent className="pt-6">
-                                <div className="text-center">
-                                    <Camera className="w-8 h-8 mx-auto mb-2 text-primary" />
-                                    <div className="text-2xl font-bold">{stats.totalSubmissions}</div>
-                                    <div className="text-xs text-muted-foreground">Submissions</div>
-                                </div>
-                            </CardContent>
-                        </Card>
-
-                        <Card>
-                            <CardContent className="pt-6">
-                                <div className="text-center">
-                                    <Users className="w-8 h-8 mx-auto mb-2 text-[#E60012]" />
-                                    <div className="text-2xl font-bold">#{familyRank}</div>
-                                    <div className="text-xs text-muted-foreground">Family Rank</div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    </div>
-
-                    <div className="grid md:grid-cols-2 gap-6">
-                        {/* Weekly Submission Card */}
-                        <Card className="md:row-span-2 border-2 border-primary/20">
-                            <CardHeader>
-                                <CardTitle className="flex items-center gap-2">
-                                    <Camera className="w-5 h-5 text-primary" />
-                                    Weekly Submission
-                                </CardTitle>
-                                <CardDescription>
-                                    Week {weekNumber} • Ends Sunday 11:59 PM
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                {hasSubmittedThisWeek ? (
-                                    <div className="text-center py-8">
-                                        <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center mx-auto mb-4">
-                                            <CheckCircle2 className="w-8 h-8 text-green-600 dark:text-green-400" />
-                                        </div>
-                                        <h3 className="font-semibold mb-2">All Done!</h3>
-                                        <p className="text-sm text-muted-foreground mb-4">
-                                            You&apos;ve already submitted your photo for this week.
-                                        </p>
-                                        <Link href="/dashboard/submissions">
-                                            <Button variant="outline" className="gap-2">
-                                                View Submission
-                                                <ArrowRight className="w-4 h-4" />
-                                            </Button>
-                                        </Link>
+                    <div className="space-y-8">
+                        {/* Quick Stats */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <Card>
+                                <CardContent className="pt-6">
+                                    <div className="text-center">
+                                        <CalendarDays className="w-8 h-8 mx-auto mb-2 text-primary" />
+                                        <div className="text-2xl font-bold">Week {weekNumber}</div>
+                                        <div className="text-xs text-muted-foreground">Current Week</div>
                                     </div>
-                                ) : (
-                                    <div className="text-center py-8">
-                                        <div className="w-16 h-16 rounded-full doraemon-gradient flex items-center justify-center mx-auto mb-4 animate-bounce-slow">
-                                            <Camera className="w-8 h-8 text-white" />
-                                        </div>
-                                        <h3 className="font-semibold mb-2">Time to Submit!</h3>
-                                        <p className="text-sm text-muted-foreground mb-4">
-                                            Don&apos;t forget to submit your weekly photo with your Em(s).
-                                        </p>
-                                        <Link href="/dashboard/submit">
-                                            <Button className="gap-2 doraemon-gradient text-white">
-                                                Submit Photo
-                                                <ArrowRight className="w-4 h-4" />
-                                            </Button>
-                                        </Link>
-                                    </div>
-                                )}
+                                </CardContent>
+                            </Card>
 
-                                <div className="border-t pt-4 mt-4">
-                                    <h4 className="font-semibold text-sm mb-3">This Week&apos;s Bonus Activities</h4>
-                                    <div className="space-y-2">
-                                        {bonusActivities.length === 0 ? (
-                                            <p className="text-sm text-muted-foreground">No active bonus activities.</p>
+                            <Card>
+                                <CardContent className="pt-6">
+                                    <div className="text-center">
+                                        <Trophy className="w-8 h-8 mx-auto mb-2 text-[#FFD700]" />
+                                        <div className="text-2xl font-bold">{stats.totalPoints}</div>
+                                        <div className="text-xs text-muted-foreground">Total Points</div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card>
+                                <CardContent className="pt-6">
+                                    <div className="text-center">
+                                        <Camera className="w-8 h-8 mx-auto mb-2 text-primary" />
+                                        <div className="text-2xl font-bold">{stats.totalSubmissions}</div>
+                                        <div className="text-xs text-muted-foreground">Submissions</div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card>
+                                <CardContent className="pt-6">
+                                    <div className="text-center">
+                                        <Users className="w-8 h-8 mx-auto mb-2 text-[#E60012]" />
+                                        <div className="text-2xl font-bold">#{familyRank}</div>
+                                        <div className="text-xs text-muted-foreground">Family Rank</div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        <div className="grid md:grid-cols-2 gap-6">
+                            {/* Weekly Submission Card */}
+                            <Card className="md:row-span-2 border-2 border-primary/20 doraemon-shadow-sm">
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <Camera className="w-5 h-5 text-primary" />
+                                        Weekly Submission
+                                    </CardTitle>
+                                    <CardDescription>
+                                        Week {weekNumber} • Ends Sunday 11:59 PM
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    {hasSubmittedThisWeek ? (
+                                        <div className="text-center py-8">
+                                            <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center mx-auto mb-4">
+                                                <CheckCircle2 className="w-8 h-8 text-green-600 dark:text-green-400" />
+                                            </div>
+                                            <h3 className="font-semibold mb-2">All Done!</h3>
+                                            <p className="text-sm text-muted-foreground mb-4">
+                                                You&apos;ve already submitted your photo for this week.
+                                            </p>
+                                            <Link href="/dashboard/submissions">
+                                                <Button variant="outline" className="gap-2">
+                                                    View Submission
+                                                    <ArrowRight className="w-4 h-4" />
+                                                </Button>
+                                            </Link>
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-8">
+                                            <div className="w-16 h-16 rounded-full doraemon-gradient flex items-center justify-center mx-auto mb-4 animate-bounce-slow">
+                                                <Camera className="w-8 h-8 text-white" />
+                                            </div>
+                                            <h3 className="font-semibold mb-2">Time to Submit!</h3>
+                                            <p className="text-sm text-muted-foreground mb-4">
+                                                Don&apos;t forget to submit your weekly photo with your Em(s).
+                                            </p>
+                                            <Link href="/dashboard/submit">
+                                                <Button className="gap-2 doraemon-gradient text-white">
+                                                    Submit Photo
+                                                    <ArrowRight className="w-4 h-4" />
+                                                </Button>
+                                            </Link>
+                                        </div>
+                                    )}
+
+                                    <div className="border-t pt-4 mt-4">
+                                        <h4 className="font-semibold text-sm mb-3">This Week&apos;s Bonus Activities</h4>
+                                        <div className="space-y-2">
+                                            {bonusActivities.length === 0 ? (
+                                                <p className="text-sm text-muted-foreground">No active bonus activities.</p>
+                                            ) : (
+                                                bonusActivities.slice(0, 3).map(bonus => (
+                                                    <div key={bonus.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                                                        <span className="text-sm">{bonus.name}</span>
+                                                        <Badge variant="secondary">+{bonus.points} pts</Badge>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            {/* Pairing Info */}
+                            <Card className="doraemon-shadow-sm">
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <Users className="w-5 h-5 text-primary" />
+                                        Your Pairing
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="space-y-4">
+                                        <div>
+                                            <div className="text-sm text-muted-foreground mb-1">Mentor (You)</div>
+                                            <div className="font-medium">{user.role === 'MENTOR' ? user.name : (profile?.pairing?.mentorName || 'Unknown')}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-sm text-muted-foreground mb-1">
+                                                {mentees.length > 1 ? 'Mentees' : 'Mentee'}
+                                            </div>
+                                            <div className="font-medium">
+                                                {menteeNames}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div className="text-sm text-muted-foreground mb-1">Family</div>
+                                            <div className="font-medium flex items-center gap-2">
+                                                {familyName}
+                                                <Badge variant="outline" className="text-xs">
+                                                    Rank #{familyRank}
+                                                </Badge>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            {/* Recent Submissions */}
+                            <Card className="doraemon-shadow-sm">
+                                <CardHeader className="flex flex-row items-center justify-between">
+                                    <CardTitle className="flex items-center gap-2">
+                                        <FileText className="w-5 h-5 text-primary" />
+                                        Recent Submissions
+                                    </CardTitle>
+                                    <Link href="/dashboard/submissions">
+                                        <Button variant="ghost" size="sm" className="gap-1">
+                                            View All
+                                            <ArrowRight className="w-4 h-4" />
+                                        </Button>
+                                    </Link>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="space-y-3">
+                                        {submissions.length === 0 ? (
+                                            <p className="text-sm text-muted-foreground">No submissions yet.</p>
                                         ) : (
-                                            bonusActivities.slice(0, 3).map(bonus => (
-                                                <div key={bonus.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                                                    <span className="text-sm">{bonus.name}</span>
-                                                    <Badge variant="secondary">+{bonus.points} pts</Badge>
+                                            submissions.slice(0, 3).map((submission) => (
+                                                <div
+                                                    key={submission.id}
+                                                    className="flex items-center justify-between p-3 bg-muted/30 rounded-lg"
+                                                >
+                                                    <div>
+                                                        <div className="font-medium text-sm">Week {submission.weekNumber}</div>
+                                                        <div className="text-xs text-muted-foreground">
+                                                            {submission.createdAt ? new Date(submission.createdAt.toDate()).toLocaleDateString() : 'N/A'}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        {getStatusBadge(submission.status)}
+                                                        {submission.status === 'APPROVED' && (
+                                                            <span className="text-sm font-semibold text-primary">
+                                                                +{submission.totalPoints || 0}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             ))
                                         )}
                                     </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-
-                        {/* Pairing Info */}
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="flex items-center gap-2">
-                                    <Users className="w-5 h-5 text-primary" />
-                                    Your Pairing
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-4">
-                                    <div>
-                                        <div className="text-sm text-muted-foreground mb-1">Mentor (You)</div>
-                                        <div className="font-medium">{user.role === 'MENTOR' ? user.name : (profile?.pairing?.mentorName || 'Unknown')}</div>
-                                    </div>
-                                    <div>
-                                        <div className="text-sm text-muted-foreground mb-1">
-                                            {mentees.length > 1 ? 'Mentees' : 'Mentee'}
-                                        </div>
-                                        <div className="font-medium">
-                                            {menteeNames}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div className="text-sm text-muted-foreground mb-1">Family</div>
-                                        <div className="font-medium flex items-center gap-2">
-                                            {familyName}
-                                            <Badge variant="outline" className="text-xs">
-                                                Rank #{familyRank}
-                                            </Badge>
-                                        </div>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-
-                        {/* Recent Submissions */}
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between">
-                                <CardTitle className="flex items-center gap-2">
-                                    <FileText className="w-5 h-5 text-primary" />
-                                    Recent Submissions
-                                </CardTitle>
-                                <Link href="/dashboard/submissions">
-                                    <Button variant="ghost" size="sm" className="gap-1">
-                                        View All
-                                        <ArrowRight className="w-4 h-4" />
-                                    </Button>
-                                </Link>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-3">
-                                    {submissions.length === 0 ? (
-                                        <p className="text-sm text-muted-foreground">No submissions yet.</p>
-                                    ) : (
-                                        submissions.slice(0, 3).map((submission) => (
-                                            <div
-                                                key={submission.id}
-                                                className="flex items-center justify-between p-3 bg-muted/30 rounded-lg"
-                                            >
-                                                <div>
-                                                    <div className="font-medium text-sm">Week {submission.weekNumber}</div>
-                                                    <div className="text-xs text-muted-foreground">
-                                                        {submission.createdAt ? new Date(submission.createdAt.toDate()).toLocaleDateString() : 'N/A'}
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    {getStatusBadge(submission.status)}
-                                                    {submission.status === 'APPROVED' && (
-                                                        <span className="text-sm font-semibold text-primary">
-                                                            {/* Calculate points if not stored? It is stored in sub */}
-                                                            +{submission.totalPoints || 0}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            </CardContent>
-                        </Card>
+                                </CardContent>
+                            </Card>
+                        </div>
                     </div>
                 </div>
             </main>

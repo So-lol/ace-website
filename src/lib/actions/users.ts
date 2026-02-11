@@ -1,7 +1,7 @@
 'use server'
 
 import { requireAdmin, getAuthenticatedUser } from '@/lib/auth-helpers'
-import { adminDb, deleteFirebaseUser, createFirebaseUser, deleteFile } from '@/lib/firebase-admin'
+import { adminDb, adminAuth, deleteFirebaseUser, createFirebaseUser, deleteFile } from '@/lib/firebase-admin'
 import { revalidatePath } from 'next/cache'
 import { UserDoc, FamilyDoc } from '@/types/firestore'
 import { logAuditAction } from '@/lib/actions/audit'
@@ -396,5 +396,68 @@ export async function deleteUser(userId: string) {
     } catch (error: any) {
         console.error('Delete user error:', error)
         return { success: false, error: error.message || 'Failed to delete user' }
+    }
+}
+
+/**
+ * Update user profile (self or admin)
+ */
+export async function updateUserProfile(userId: string, data: Partial<UserDoc>) {
+    try {
+        const currentUser = await getAuthenticatedUser()
+        if (!currentUser) {
+            return { success: false, error: 'Not authenticated' }
+        }
+
+        // IDOR Check: Allow self or admin
+        if (currentUser.id !== userId && currentUser.role !== 'ADMIN') {
+            return { success: false, error: 'Unauthorized' }
+        }
+
+        // 1. Update Firebase Auth if Name or Email changed
+        const authUpdates: any = {}
+        if (data.name) authUpdates.displayName = data.name
+        if (data.email) authUpdates.email = data.email
+
+        if (Object.keys(authUpdates).length > 0) {
+            await adminAuth.updateUser(userId, authUpdates)
+        }
+
+        // 2. Update Firestore
+        const firestoreUpdates: any = {
+            ...data,
+            updatedAt: Timestamp.now()
+        }
+
+        // Filter out fields that shouldn't be updated here or are already in data
+        delete firestoreUpdates.uid
+        delete firestoreUpdates.role
+        delete firestoreUpdates.id // In case it was passed
+
+        await adminDb.collection('users').doc(userId).update(firestoreUpdates)
+
+        // 3. Revalidate
+        revalidatePath('/dashboard')
+        revalidatePath('/profile')
+        revalidatePath('/admin/users')
+
+        // 4. Audit Log
+        await logAuditAction(
+            currentUser.id,
+            'UPDATE_PROFILE',
+            'USER',
+            userId,
+            `Updated profile fields: ${Object.keys(data).join(', ')}`,
+            undefined,
+            currentUser.email
+        )
+
+        return { success: true }
+    } catch (error: any) {
+        console.error('Update profile error:', error)
+        if (error.code === 'auth/email-already-in-use') {
+            return { success: false, error: 'This email is already in use by another account.' }
+        }
+        return { success: false, error: error.message || 'Failed to update profile' }
     }
 }

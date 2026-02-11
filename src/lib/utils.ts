@@ -6,7 +6,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 // Semester Start Date: January 1, 2026 (Adjust as needed)
-const SEMESTER_START_DATE = new Date('2026-01-01T00:00:00-08:00') // PST
+const SEMESTER_START_DATE = new Date('2026-02-09T00:00:00-08:00') // PST
 
 export function getCurrentWeek(): { weekNumber: number, year: number } {
   const now = new Date()

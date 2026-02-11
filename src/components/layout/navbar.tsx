@@ -151,7 +151,7 @@ export function Navbar({ user }: NavbarProps) {
                                     </Link>
                                 </DropdownMenuItem>
                                 <DropdownMenuItem asChild>
-                                    <Link href="/dashboard/profile" className="cursor-pointer">
+                                    <Link href="/profile" className="cursor-pointer">
                                         <User className="w-4 h-4 mr-2" />
                                         Profile
                                     </Link>
