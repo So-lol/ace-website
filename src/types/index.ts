@@ -1,11 +1,6 @@
 // Safe Client Types (No firebase-admin imports)
-import type { UserRole, SubmissionStatus, AdjustmentTargetType } from './enums'
-export type { UserRole, SubmissionStatus, AdjustmentTargetType }
-
-// ======================
-// ENUMS / UNIONS
-// ======================
-// Definitions moved to enums.ts
+import type { UserRole, SubmissionStatus } from './enums'
+export type { UserRole, SubmissionStatus }
 
 // ======================
 // BASE INTERFACES (Client-side representations)
@@ -81,36 +76,6 @@ export type UserWithFamily = User & {
     family: Family | null
 }
 
-export type PairingWithMentees = Pairing & {
-    mentees: User[]
-    family: Family
-}
-
-export type UserWithPairings = User & {
-    family: Family | null
-    mentorPairings: PairingWithMentees[]
-    menteePairings: PairingWithMentees[]
-}
-
-export type PairingFull = Pairing & {
-    mentor: User
-    mentees: User[]
-    family: Family
-    submissions: Submission[]
-}
-
-export type FamilyWithMembers = Family & {
-    members: User[]
-    pairings: Pairing[]
-}
-
-export type SubmissionWithRelations = Submission & {
-    pairing: PairingFull
-    submitter: User
-    reviewer: User | null
-    bonusActivities: { bonusActivity: BonusActivity }[]
-}
-
 export interface Announcement {
     id: string
     title: string
@@ -123,28 +88,6 @@ export interface Announcement {
     createdAt: Date
     updatedAt: Date
 }
-
-export type AnnouncementWithAuthor = Announcement & {
-    author: User
-}
-
-// ======================
-// UTILS
-// ======================
-
-export function getCurrentWeek(): { weekNumber: number; year: number } {
-    const now = new Date()
-    const year = now.getFullYear()
-    const startOfYear = new Date(year, 0, 1)
-    const days = Math.floor((now.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000))
-    const weekNumber = Math.ceil((days + startOfYear.getDay() + 1) / 7)
-    return { weekNumber, year }
-}
-
-// Input Types
-export type CreateFamilyInput = { name: string }
-export type CreateUserInput = { email: string; name: string; role: UserRole }
-export type CreatePairingInput = { familyId: string; mentorId: string; menteeIds: string[] }
 
 // ======================
 // ACE APPLICATION
