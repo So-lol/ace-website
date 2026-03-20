@@ -22,7 +22,7 @@ export async function GET(request: Request) {
     // Handle password reset
     if (mode === 'resetPassword' && oobCode) {
         // Redirect to password reset page with the code
-        return NextResponse.redirect(`${origin}/auth/reset-password?oobCode=${oobCode}`)
+        return NextResponse.redirect(`${origin}/forgot-password?oobCode=${oobCode}`)
     }
 
     // Default: redirect to the intended destination

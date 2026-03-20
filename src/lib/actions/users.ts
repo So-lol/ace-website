@@ -32,7 +32,7 @@ export async function createUser(input: CreateUserInput) {
         }
 
         // Create Firebase Auth user
-        const result = await createFirebaseUser(input.email, input.password, input.name)
+        const result = await createFirebaseUser(input.email, input.password, input.name, true)
 
         if (!result.user) {
             return { success: false, error: 'Failed to create user in Firebase Auth' }

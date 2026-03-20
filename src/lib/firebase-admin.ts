@@ -123,13 +123,18 @@ export async function getUserByEmail(email: string) {
 /**
  * Create a new user
  */
-export async function createFirebaseUser(email: string, password: string, displayName: string) {
+export async function createFirebaseUser(
+    email: string,
+    password: string,
+    displayName: string,
+    emailVerified = false
+) {
     try {
         const user = await adminAuth.createUser({
             email,
             password,
             displayName,
-            emailVerified: false,
+            emailVerified,
         })
         return { user, error: null }
     } catch (error) {

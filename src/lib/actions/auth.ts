@@ -1,7 +1,7 @@
 'use server'
 
 import { cookies, headers } from 'next/headers'
-import { verifyIdToken, adminDb, createSessionCookie } from '@/lib/firebase-admin'
+import { verifyIdToken, adminAuth, adminDb, createSessionCookie, getUserByEmail } from '@/lib/firebase-admin'
 import { Timestamp } from 'firebase-admin/firestore'
 import { UserDoc } from '@/types/firestore'
 import { checkRateLimit } from '@/lib/rate-limit'
@@ -13,6 +13,138 @@ type AuthResult = {
     redirectTo?: string
     needsClientAuth?: boolean
     user?: any // return user data for context
+}
+
+type PasswordResetPreparationResult = {
+    success: boolean
+    accountExists: boolean
+    error?: string
+}
+
+function normalizeEmail(email: string) {
+    return email.trim().toLowerCase()
+}
+
+async function findUserDocByEmail(email: string) {
+    const normalizedEmail = normalizeEmail(email)
+    const snapshot = await adminDb.collection('users').where('email', '==', normalizedEmail).limit(1).get()
+
+    if (snapshot.empty) return null
+
+    return snapshot.docs[0]
+}
+
+async function migrateUserReferences(oldUserId: string, newUserId: string) {
+    if (oldUserId === newUserId) return
+
+    const [familiesByMember, familiesByHead, familiesByAuntUncle, mentorPairings, menteePairings] = await Promise.all([
+        adminDb.collection('families').where('memberIds', 'array-contains', oldUserId).get(),
+        adminDb.collection('families').where('familyHeadIds', 'array-contains', oldUserId).get(),
+        adminDb.collection('families').where('auntUncleIds', 'array-contains', oldUserId).get(),
+        adminDb.collection('pairings').where('mentorId', '==', oldUserId).get(),
+        adminDb.collection('pairings').where('menteeIds', 'array-contains', oldUserId).get(),
+    ])
+
+    const updates: Promise<unknown>[] = []
+    const updatedFamilyIds = new Set<string>()
+    const updatedPairingIds = new Set<string>()
+
+    for (const familyDoc of [...familiesByMember.docs, ...familiesByHead.docs, ...familiesByAuntUncle.docs]) {
+        if (updatedFamilyIds.has(familyDoc.id)) continue
+        updatedFamilyIds.add(familyDoc.id)
+
+        const familyData = familyDoc.data()
+        const replaceIds = (ids?: string[]) => ids?.map((id) => (id === oldUserId ? newUserId : id))
+
+        updates.push(
+            familyDoc.ref.update({
+                memberIds: replaceIds(familyData.memberIds) || [],
+                familyHeadIds: replaceIds(familyData.familyHeadIds),
+                auntUncleIds: replaceIds(familyData.auntUncleIds),
+                updatedAt: Timestamp.now(),
+            })
+        )
+    }
+
+    for (const pairingDoc of [...mentorPairings.docs, ...menteePairings.docs]) {
+        if (updatedPairingIds.has(pairingDoc.id)) continue
+        updatedPairingIds.add(pairingDoc.id)
+
+        const pairingData = pairingDoc.data()
+        updates.push(
+            pairingDoc.ref.update({
+                mentorId: pairingData.mentorId === oldUserId ? newUserId : pairingData.mentorId,
+                menteeIds: (pairingData.menteeIds || []).map((id: string) => (id === oldUserId ? newUserId : id)),
+                updatedAt: Timestamp.now(),
+            })
+        )
+    }
+
+    if (updates.length > 0) {
+        await Promise.all(updates)
+    }
+}
+
+async function ensureUserDocForUid(params: {
+    uid: string
+    email: string
+    name?: string | null
+    avatarUrl?: string | null
+}) {
+    const normalizedEmail = normalizeEmail(params.email)
+    const userRef = adminDb.collection('users').doc(params.uid)
+    const userSnap = await userRef.get()
+
+    if (userSnap.exists) {
+        const currentData = userSnap.data() as UserDoc
+        const nextData: Partial<UserDoc> = {}
+
+        if (currentData.email !== normalizedEmail) nextData.email = normalizedEmail
+        if ((!currentData.name || currentData.name === 'Unknown') && params.name) nextData.name = params.name
+        if ((!currentData.avatarUrl || currentData.avatarUrl !== params.avatarUrl) && params.avatarUrl !== undefined) {
+            nextData.avatarUrl = params.avatarUrl
+        }
+
+        if (Object.keys(nextData).length > 0) {
+            nextData.updatedAt = Timestamp.now()
+            await userRef.update(nextData)
+        }
+
+        return { id: userSnap.id, ...currentData, ...nextData } as UserDoc & { id: string }
+    }
+
+    const emailMatch = await findUserDocByEmail(normalizedEmail)
+
+    if (emailMatch && emailMatch.id !== params.uid) {
+        const existingData = emailMatch.data() as UserDoc
+
+        await migrateUserReferences(emailMatch.id, params.uid)
+        await userRef.set({
+            ...existingData,
+            uid: params.uid,
+            email: normalizedEmail,
+            name: existingData.name || params.name || 'Unknown',
+            avatarUrl: existingData.avatarUrl ?? params.avatarUrl ?? null,
+            updatedAt: Timestamp.now(),
+        })
+        await emailMatch.ref.delete()
+
+        return { id: params.uid, ...existingData, uid: params.uid, email: normalizedEmail } as UserDoc & { id: string }
+    }
+
+    const userData: UserDoc = {
+        uid: params.uid,
+        email: normalizedEmail,
+        name: params.name || 'Unknown',
+        role: 'MENTEE',
+        familyId: null,
+        avatarUrl: params.avatarUrl ?? null,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+    }
+    await userRef.set(userData)
+
+    return { id: params.uid, ...userData }
 }
 
 /**
@@ -42,27 +174,12 @@ export async function verifyAndSyncUser(idToken: string): Promise<AuthResult> {
         }
 
         // 2. Check if user exists in Firestore
-        const userRef = adminDb.collection('users').doc(firebaseUser.uid)
-        const userSnap = await userRef.get()
-        let userData: UserDoc
-
-        if (!userSnap.exists) {
-            // Handle edge case: User created in Auth but not Firestore
-            console.warn(`Syncing missing user ${firebaseUser.uid} to Firestore`)
-            userData = {
-                uid: firebaseUser.uid,
-                email: firebaseUser.email || '',
-                name: firebaseUser.name || 'Unknown',
-                role: 'MENTEE',
-                familyId: null,
-                avatarUrl: firebaseUser.picture || null,
-                createdAt: Timestamp.now(),
-                updatedAt: Timestamp.now(),
-            }
-            await userRef.set(userData)
-        } else {
-            userData = { id: userSnap.id, ...userSnap.data() } as unknown as UserDoc
-        }
+        const userData = await ensureUserDocForUid({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email || '',
+            name: firebaseUser.name,
+            avatarUrl: firebaseUser.picture || null,
+        })
 
         // 3. Create Session Cookie (5 days)
         const expiresIn = 60 * 60 * 24 * 5 * 1000 // 5 days in milliseconds
@@ -133,6 +250,45 @@ export async function createUserProfile(idToken: string, name: string): Promise<
     } catch (error) {
         console.error('Create user profile error:', error)
         return { success: false, error: 'Failed to create user profile' }
+    }
+}
+
+export async function preparePasswordReset(email: string): Promise<PasswordResetPreparationResult> {
+    try {
+        const normalizedEmail = normalizeEmail(email)
+
+        if (!normalizedEmail) {
+            return { success: false, accountExists: false, error: 'Email is required' }
+        }
+
+        const existingAuthUser = await getUserByEmail(normalizedEmail)
+        if (existingAuthUser) {
+            return { success: true, accountExists: true }
+        }
+
+        const userDoc = await findUserDocByEmail(normalizedEmail)
+        if (!userDoc) {
+            return { success: false, accountExists: false }
+        }
+
+        const userData = userDoc.data() as UserDoc
+        const authUser = await adminAuth.createUser({
+            email: normalizedEmail,
+            displayName: userData.name || undefined,
+            emailVerified: true,
+        })
+
+        await ensureUserDocForUid({
+            uid: authUser.uid,
+            email: normalizedEmail,
+            name: userData.name,
+            avatarUrl: userData.avatarUrl ?? null,
+        })
+
+        return { success: true, accountExists: true }
+    } catch (error) {
+        console.error('Prepare password reset error:', error)
+        return { success: false, accountExists: true, error: 'Failed to prepare account for password reset' }
     }
 }
 

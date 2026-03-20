@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Cat, ArrowLeft, Loader2, Mail, Lock, CheckCircle2 } from 'lucide-react'
 import { sendPasswordResetEmail, confirmPasswordReset, verifyPasswordResetCode } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
+import { preparePasswordReset } from '@/lib/actions/auth'
 import { toast } from 'sonner'
 
 export default function ForgotPasswordPage() {
@@ -48,9 +49,20 @@ export default function ForgotPasswordPage() {
         e.preventDefault()
         setIsLoading(true)
         const formData = new FormData(e.currentTarget)
-        const email = formData.get('email') as string
+        const email = ((formData.get('email') as string) || '').trim().toLowerCase()
 
         try {
+            const preparation = await preparePasswordReset(email)
+
+            if (!preparation.success) {
+                if (!preparation.accountExists) {
+                    toast.error('No account found with this email.')
+                } else {
+                    toast.error(preparation.error || 'Failed to send reset email. Please try again.')
+                }
+                return
+            }
+
             // We want to handle the reset in-app using our custom forgot-password page
             // The link in the email will go to /auth/action which redirects to /forgot-password?oobCode=...
             await sendPasswordResetEmail(auth, email, {
@@ -271,4 +283,3 @@ export default function ForgotPasswordPage() {
         </div>
     )
 }
-

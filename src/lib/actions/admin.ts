@@ -1,6 +1,6 @@
 'use server'
 
-import { adminDb } from '@/lib/firebase-admin'
+import { adminAuth, adminDb, getUserByEmail } from '@/lib/firebase-admin'
 import { requireAdmin } from '@/lib/auth-helpers'
 import { Timestamp } from 'firebase-admin/firestore'
 import { UserDoc } from '@/types/firestore'
@@ -30,12 +30,26 @@ export async function importUsers(users: any[]): Promise<ImportStats> {
                 continue
             }
 
-            const userId = data.uid || data.email.toLowerCase().replace(/[^a-z0-9]/g, '_')
-            const userRef = adminDb.collection('users').doc(userId)
+            const email = data.email.toLowerCase()
+            const existingAuthUser = await getUserByEmail(email)
+            const authUser = existingAuthUser || await adminAuth.createUser({
+                email,
+                displayName: data.name,
+                emailVerified: true,
+            })
+
+            const userRef = adminDb.collection('users').doc(authUser.uid)
+            const existingFirestoreUser = await adminDb.collection('users').where('email', '==', email).limit(1).get()
+            if (!existingFirestoreUser.empty) {
+                const existingDoc = existingFirestoreUser.docs[0]
+                if (existingDoc.id !== authUser.uid) {
+                    batch.delete(existingDoc.ref)
+                }
+            }
 
             const userData: UserDoc = {
-                uid: userId, // In bulk import without Auth ID yet, we might use email-based ID
-                email: data.email.toLowerCase(),
+                uid: authUser.uid,
+                email,
                 name: data.name,
                 role: data.role.toUpperCase() as any,
                 familyId: data.family_id || null,
@@ -46,7 +60,7 @@ export async function importUsers(users: any[]): Promise<ImportStats> {
 
             batch.set(userRef, userData, { merge: true })
             stats.success++
-            usersCreated.push(userId)
+            usersCreated.push(authUser.uid)
         } catch (err: any) {
             stats.failed++
             stats.errors.push(`Error importing ${data.email}: ${err.message}`)
