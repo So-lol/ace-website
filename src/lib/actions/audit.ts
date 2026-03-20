@@ -10,7 +10,7 @@ export async function logAuditAction(
     targetType: string,
     targetId: string,
     details: string,
-    metadata?: Record<string, any>,
+    metadata?: Record<string, unknown>,
     actorEmail?: string
 ) {
     try {

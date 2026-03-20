@@ -6,6 +6,12 @@ import { revalidatePath } from 'next/cache'
 import { Timestamp } from 'firebase-admin/firestore'
 import { FamilyDoc } from '@/types/firestore'
 import { logAuditAction } from '@/lib/actions/audit'
+import { getErrorMessage } from '@/lib/errors'
+
+type FamilyUpdateData = Partial<FamilyDoc> & {
+    familyHeadId?: null
+    updatedAt: Timestamp
+}
 
 /**
  * Get all families (admin)
@@ -133,9 +139,9 @@ export async function createFamily(data: { name: string }) {
         )
 
         return { success: true, familyId: ref.id }
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error creating family:', error)
-        return { success: false, error: error.message || 'Failed to create family' }
+        return { success: false, error: getErrorMessage(error, 'Failed to create family') }
     }
 }
 
@@ -146,7 +152,7 @@ export async function updateFamily(familyId: string, data: Partial<FamilyDoc>) {
     try {
         const admin = await requireAdmin()
 
-        const updates: any = {
+        const updates: FamilyUpdateData = {
             ...data,
             updatedAt: Timestamp.now()
         }
@@ -172,9 +178,9 @@ export async function updateFamily(familyId: string, data: Partial<FamilyDoc>) {
         )
 
         return { success: true }
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error updating family:', error)
-        return { success: false, error: error.message || 'Failed to update family' }
+        return { success: false, error: getErrorMessage(error, 'Failed to update family') }
     }
 }
 
@@ -203,8 +209,8 @@ export async function deleteFamily(familyId: string) {
         )
 
         return { success: true }
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Error deleting family:', error)
-        return { success: false, error: error.message || 'Failed to delete family' }
+        return { success: false, error: getErrorMessage(error, 'Failed to delete family') }
     }
 }

@@ -7,6 +7,7 @@ import { UserDoc, FamilyDoc } from '@/types/firestore'
 import { logAuditAction } from '@/lib/actions/audit'
 import { UserWithFamily, UserRole, Family } from '@/types/index'
 import { Timestamp } from 'firebase-admin/firestore'
+import { normalizeEmail } from '@/lib/auth-utils'
 
 interface CreateUserInput {
     name: string
@@ -14,6 +15,25 @@ interface CreateUserInput {
     password: string
     role: UserRole
     familyId?: string
+}
+
+type ActionError = {
+    message?: string
+    code?: string
+}
+
+type UserProfileResult = UserDoc & {
+    id: string
+    family: {
+        id: string
+        name?: string
+        rank?: number | string
+    } | null
+    pairing: {
+        id: string
+        mentorName?: string
+        mentees: string[]
+    } | null
 }
 
 /**
@@ -32,7 +52,8 @@ export async function createUser(input: CreateUserInput) {
         }
 
         // Create Firebase Auth user
-        const result = await createFirebaseUser(input.email, input.password, input.name, true)
+        const normalizedEmail = normalizeEmail(input.email)
+        const result = await createFirebaseUser(normalizedEmail, input.password, input.name, true)
 
         if (!result.user) {
             return { success: false, error: 'Failed to create user in Firebase Auth' }
@@ -43,7 +64,7 @@ export async function createUser(input: CreateUserInput) {
         // Create Firestore user document
         const newUser: Omit<UserDoc, 'id'> = {
             uid,
-            email: input.email,
+            email: normalizedEmail,
             name: input.name,
             role: input.role || 'MENTEE',
             familyId: input.familyId || null,
@@ -78,15 +99,16 @@ export async function createUser(input: CreateUserInput) {
             'CREATE',
             'USER',
             uid,
-            `Created user ${input.name} (${input.email})`,
+            `Created user ${input.name} (${normalizedEmail})`,
             undefined,
             admin.email
         )
 
         return { success: true, userId: uid }
-    } catch (error: any) {
+    } catch (error: unknown) {
+        const actionError = error as ActionError
         console.error('Create user error:', error)
-        return { success: false, error: error.message || 'Failed to create user' }
+        return { success: false, error: actionError.message || 'Failed to create user' }
     }
 }
 
@@ -142,7 +164,7 @@ export async function getUsers(): Promise<UserWithFamily[]> {
 /**
  * Get full user profile with relations for dashboard
  */
-export async function getUserProfile(userId: string) {
+export async function getUserProfile(userId: string): Promise<UserProfileResult | null> {
     try {
         const currentUser = await getAuthenticatedUser()
         if (!currentUser) return null
@@ -156,8 +178,8 @@ export async function getUserProfile(userId: string) {
         if (!userDoc.exists) return null
 
         const userData = userDoc.data() as UserDoc
-        let family: any = null
-        let pairing: any = null
+        let family: UserProfileResult['family'] = null
+        let pairing: UserProfileResult['pairing'] = null
 
         // Fetch Family
         if (userData.familyId) {
@@ -199,7 +221,7 @@ export async function getUserProfile(userId: string) {
 
             pairing = {
                 id: pDoc.id,
-                ...pData,
+                mentorName: pData.mentorName,
                 mentees: mentees
             }
         }
@@ -393,9 +415,10 @@ export async function deleteUser(userId: string) {
         )
 
         return { success: true }
-    } catch (error: any) {
+    } catch (error: unknown) {
+        const actionError = error as ActionError
         console.error('Delete user error:', error)
-        return { success: false, error: error.message || 'Failed to delete user' }
+        return { success: false, error: actionError.message || 'Failed to delete user' }
     }
 }
 
@@ -414,17 +437,20 @@ export async function updateUserProfile(userId: string, data: Partial<UserDoc>) 
             return { success: false, error: 'Unauthorized' }
         }
 
-        // 1. Update Firebase Auth if Name or Email changed
-        const authUpdates: any = {}
+        if (data.email) {
+            return { success: false, error: 'Use the account security form to change your email address.' }
+        }
+
+        // 1. Update Firebase Auth if Name changed
+        const authUpdates: { displayName?: string } = {}
         if (data.name) authUpdates.displayName = data.name
-        if (data.email) authUpdates.email = data.email
 
         if (Object.keys(authUpdates).length > 0) {
             await adminAuth.updateUser(userId, authUpdates)
         }
 
         // 2. Update Firestore
-        const firestoreUpdates: any = {
+        const firestoreUpdates: Partial<UserDoc> & { updatedAt: Timestamp } = {
             ...data,
             updatedAt: Timestamp.now()
         }
@@ -432,7 +458,9 @@ export async function updateUserProfile(userId: string, data: Partial<UserDoc>) 
         // Filter out fields that shouldn't be updated here or are already in data
         delete firestoreUpdates.uid
         delete firestoreUpdates.role
-        delete firestoreUpdates.id // In case it was passed
+        if (firestoreUpdates.email) {
+            firestoreUpdates.email = normalizeEmail(firestoreUpdates.email)
+        }
 
         await adminDb.collection('users').doc(userId).update(firestoreUpdates)
 
@@ -453,11 +481,12 @@ export async function updateUserProfile(userId: string, data: Partial<UserDoc>) 
         )
 
         return { success: true }
-    } catch (error: any) {
+    } catch (error: unknown) {
+        const actionError = error as ActionError
         console.error('Update profile error:', error)
-        if (error.code === 'auth/email-already-in-use') {
+        if (actionError.code === 'auth/email-already-in-use') {
             return { success: false, error: 'This email is already in use by another account.' }
         }
-        return { success: false, error: error.message || 'Failed to update profile' }
+        return { success: false, error: actionError.message || 'Failed to update profile' }
     }
 }

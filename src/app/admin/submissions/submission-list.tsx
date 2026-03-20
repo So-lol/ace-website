@@ -13,7 +13,6 @@ import {
     Clock,
     Eye,
     FileImage,
-    Filter,
     Loader2
 } from 'lucide-react'
 import {
@@ -23,16 +22,15 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { approveSubmission, rejectSubmission } from '@/lib/actions/submissions'
+import { AdminSubmissionListItem, approveSubmission, rejectSubmission } from '@/lib/actions/submissions'
 import { toast } from 'sonner'
 import Image from 'next/image'
 
 interface SubmissionListProps {
-    submissions: any[] // Using any for now due to complex joined type
+    submissions: AdminSubmissionListItem[]
 }
 
 function formatDateTime(date: Date) {
@@ -52,7 +50,7 @@ export default function SubmissionList({ submissions }: SubmissionListProps) {
     const [rejectReason, setRejectReason] = useState('')
     const [isProcessing, setIsProcessing] = useState(false)
     const [viewImageOpen, setViewImageOpen] = useState(false)
-    const [viewedSubmission, setViewedSubmission] = useState<any | null>(null)
+    const [viewedSubmission, setViewedSubmission] = useState<AdminSubmissionListItem | null>(null)
 
     const filteredSubmissions = submissions.filter(s => {
         const pairingName = s.pairing ? `${s.pairing.mentor?.name} & ${s.pairing.menteeIds?.length} Mentees` : ''
@@ -74,7 +72,7 @@ export default function SubmissionList({ submissions }: SubmissionListProps) {
             } else {
                 toast.error(result.error || 'Failed to approve')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         } finally {
             setIsProcessing(false)
@@ -100,19 +98,19 @@ export default function SubmissionList({ submissions }: SubmissionListProps) {
             } else {
                 toast.error(result.error || 'Failed to reject')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         } finally {
             setIsProcessing(false)
         }
     }
 
-    const openViewImage = (submission: any) => {
+    const openViewImage = (submission: AdminSubmissionListItem) => {
         setViewedSubmission(submission)
         setViewImageOpen(true)
     }
 
-    const SubmissionCard = ({ submission }: { submission: any }) => (
+    const SubmissionCard = ({ submission }: { submission: AdminSubmissionListItem }) => (
         <Card className="overflow-hidden">
             <div className="flex flex-col sm:flex-row">
                 {/* Image Preview */}
@@ -175,9 +173,9 @@ export default function SubmissionList({ submissions }: SubmissionListProps) {
 
                         <div className="flex flex-wrap gap-1 mb-3">
                             {submission.bonusActivities && submission.bonusActivities.length > 0 ? (
-                                submission.bonusActivities.map((b: any, i: number) => (
-                                    <Badge key={i} variant="outline" className="text-xs">
-                                        {b.bonusActivity?.name || 'Bonus'}
+                                submission.bonusActivities.map((bonus) => (
+                                    <Badge key={bonus.bonusActivity.id} variant="outline" className="text-xs">
+                                        {bonus.bonusActivity.name || 'Bonus'}
                                     </Badge>
                                 ))
                             ) : (

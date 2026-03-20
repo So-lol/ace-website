@@ -24,33 +24,11 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Loader2, Plus, Minus, Trophy, History, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
-import { adjustPairingPoints } from '@/lib/actions/points'
-
-interface Pairing {
-    id: string
-    mentorName: string
-    familyName: string
-    totalPoints: number
-}
-
-interface AuditLog {
-    id: string
-    action: string
-    targetId: string
-    actorId: string
-    details: string
-    timestamp: Date
-    metadata?: {
-        previousPoints: number
-        adjustment: number
-        newPoints: number
-        actorName?: string
-    }
-}
+import { adjustPairingPoints, PointsAdminPairing, PointsAuditEntry } from '@/lib/actions/points'
 
 interface PointsFormProps {
-    pairings: Pairing[]
-    auditLogs: AuditLog[]
+    pairings: PointsAdminPairing[]
+    auditLogs: PointsAuditEntry[]
 }
 
 export default function PointsForm({ pairings, auditLogs }: PointsFormProps) {
@@ -98,7 +76,7 @@ export default function PointsForm({ pairings, auditLogs }: PointsFormProps) {
             } else {
                 toast.error(result.error || 'Failed to adjust points')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         } finally {
             setIsLoading(false)

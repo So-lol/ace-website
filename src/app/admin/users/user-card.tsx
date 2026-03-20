@@ -5,8 +5,6 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -26,20 +24,12 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog'
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select'
-import {
     MoreHorizontal,
     Mail,
     Calendar,
     Shield,
     UserCheck,
     Users,
-    Pencil,
     Trash2,
     UserCog,
     Loader2
@@ -110,7 +100,7 @@ export default function UserCard({ user }: UserCardProps) {
             } else {
                 toast.error(result.error || 'Failed to update role')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         } finally {
             setIsLoading(false)
@@ -128,7 +118,7 @@ export default function UserCard({ user }: UserCardProps) {
             } else {
                 toast.error(result.error || 'Failed to delete user')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         } finally {
             setIsLoading(false)

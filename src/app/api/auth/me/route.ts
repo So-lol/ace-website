@@ -1,7 +1,13 @@
 import { getAuthenticatedUser } from '@/lib/auth-helpers'
 import { adminDb } from '@/lib/firebase-admin'
 import { NextRequest, NextResponse } from 'next/server'
-import { verifyIdToken } from '@/lib/firebase-admin'
+import { verifyCanonicalIdToken } from '@/lib/server-auth'
+
+export const dynamic = 'force-dynamic'
+
+const noStoreHeaders = {
+    'Cache-Control': 'private, no-store, max-age=0',
+}
 
 export async function GET(request: NextRequest) {
     try {
@@ -12,8 +18,11 @@ export async function GET(request: NextRequest) {
         let uid: string | null = null
 
         if (idToken) {
-            const { user: firebaseUser, error } = await verifyIdToken(idToken)
-            if (!error && firebaseUser) {
+            const { user: firebaseUser, error } = await verifyCanonicalIdToken(idToken)
+            if (error) {
+                return NextResponse.json(null, { status: 401, headers: noStoreHeaders })
+            }
+            if (firebaseUser && firebaseUser.emailVerified && !firebaseUser.disabled) {
                 uid = firebaseUser.uid
             }
         }
@@ -27,13 +36,13 @@ export async function GET(request: NextRequest) {
         }
 
         if (!uid) {
-            return NextResponse.json(null, { status: 401 })
+            return NextResponse.json(null, { status: 401, headers: noStoreHeaders })
         }
 
         const userDoc = await adminDb.collection('users').doc(uid).get()
 
         if (!userDoc.exists) {
-            return NextResponse.json(null, { status: 404 })
+            return NextResponse.json(null, { status: 404, headers: noStoreHeaders })
         }
 
         const userData = userDoc.data()
@@ -43,9 +52,9 @@ export async function GET(request: NextRequest) {
             name: userData?.name,
             email: userData?.email,
             role: userData?.role
-        })
+        }, { headers: noStoreHeaders })
     } catch (error) {
         console.error('Error fetching user:', error)
-        return NextResponse.json(null, { status: 500 })
+        return NextResponse.json(null, { status: 500, headers: noStoreHeaders })
     }
 }

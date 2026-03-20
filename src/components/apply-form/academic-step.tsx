@@ -8,11 +8,11 @@ import {
     SelectValue,
 } from '@/components/ui/select'
 import { GraduationCap } from 'lucide-react'
-import { FormData } from './types'
+import { FormData, FormUpdater } from './types'
 
 interface AcademicStepProps {
     formData: FormData
-    update: (field: keyof FormData, value: any) => void
+    update: FormUpdater
 }
 
 export function AcademicStep({ formData, update }: AcademicStepProps) {
@@ -32,7 +32,7 @@ export function AcademicStep({ formData, update }: AcademicStepProps) {
                         <div className="absolute left-0 top-1/2 -translate-x-1.5 -translate-y-1/2 w-3 h-3 bg-blue-50 dark:bg-blue-950/40 border-l border-b border-blue-100 dark:border-blue-900 rotate-45" />
 
                         <p className="text-sm text-blue-800 dark:text-blue-100 font-medium leading-relaxed italic relative z-10">
-                            "The more intentional your answers are, the easier it is for us to pair you!"
+                            &quot;The more intentional your answers are, the easier it is for us to pair you!&quot;
                         </p>
                     </div>
                 </div>

@@ -2,29 +2,27 @@
 
 import { useState } from 'react'
 import { AdminHeader } from '@/components/admin'
-import { NavbarWithAuthClient, Footer } from '@/components/layout'
+import { Footer } from '@/components/layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
-    FileUp,
     Upload,
     FileSpreadsheet,
     AlertCircle,
     CheckCircle2,
-    ArrowRight,
     Download,
     Loader2,
-    XCircle
 } from 'lucide-react'
 import Papa from 'papaparse'
 import { toast } from 'sonner'
-import { importUsers, importPairings, ImportStats } from '@/lib/actions/admin'
+import { importUsers, importPairings, ImportCsvRow, ImportStats } from '@/lib/actions/admin'
+import { getErrorMessage } from '@/lib/errors'
 
 export default function ImportPage() {
     const [isLoading, setIsLoading] = useState(false)
     const [fileName, setFileName] = useState<string | null>(null)
-    const [parsedData, setParsedData] = useState<any[] | null>(null)
+    const [parsedData, setParsedData] = useState<ImportCsvRow[] | null>(null)
     const [importType, setImportType] = useState<'users' | 'pairings'>('users')
     const [stats, setStats] = useState<ImportStats | null>(null)
 
@@ -40,7 +38,7 @@ export default function ImportPage() {
         setFileName(file.name)
         setStats(null)
 
-        Papa.parse(file, {
+        Papa.parse<ImportCsvRow>(file, {
             header: true,
             skipEmptyLines: true,
             complete: (results) => {
@@ -82,9 +80,9 @@ export default function ImportPage() {
             } else {
                 toast.error(`Import failed. ${result.failed} records could not be processed.`)
             }
-        } catch (err: any) {
-            console.error('Import error:', err)
-            toast.error(err.message || 'An unexpected error occurred during import')
+        } catch (error: unknown) {
+            console.error('Import error:', error)
+            toast.error(getErrorMessage(error, 'An unexpected error occurred during import'))
         } finally {
             setIsLoading(false)
         }
@@ -320,4 +318,3 @@ export default function ImportPage() {
         </>
     )
 }
-

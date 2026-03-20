@@ -3,7 +3,7 @@ import MediaList from './media-list'
 
 export default async function MediaAdminPage() {
     const [media, stats] = await Promise.all([
-        getMediaLibrary() as Promise<any[]>,
+        getMediaLibrary(),
         getMediaStats()
     ])
 

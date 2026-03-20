@@ -13,6 +13,12 @@ import { Link as LinkIcon, Plus, Trash2, Save, Loader2 } from 'lucide-react'
 import { updateUserProfile } from '@/lib/actions/users'
 import { UserDoc } from '@/types/firestore'
 
+type SerializedUserProfile = Omit<UserDoc, 'createdAt' | 'updatedAt'> & {
+    id: string
+    createdAt: number
+    updatedAt: number
+}
+
 const profileSchema = z.object({
     name: z.string().min(2, 'Name must be at least 2 characters'),
     pronouns: z.string().optional(),
@@ -27,11 +33,7 @@ const profileSchema = z.object({
 type ProfileFormValues = z.infer<typeof profileSchema>
 
 interface UserProfileFormProps {
-    user: Omit<UserDoc, 'createdAt' | 'updatedAt'> & {
-        id: string
-        createdAt: any // Allow serialized non-Timestamp values
-        updatedAt: any
-    }
+    user: SerializedUserProfile
 }
 
 export function UserProfileForm({ user }: UserProfileFormProps) {
@@ -63,13 +65,13 @@ export function UserProfileForm({ user }: UserProfileFormProps) {
                 ...data,
                 socialLinks: data.socialLinks.map(link => link.url).filter(url => url.length > 0)
             }
-            const result = await updateUserProfile(user.id, payload as any)
+            const result = await updateUserProfile(user.id, payload)
             if (result.success) {
                 toast.success('Profile updated successfully!')
             } else {
                 toast.error(result.error || 'Failed to update profile')
             }
-        } catch (error) {
+        } catch {
             toast.error('An unexpected error occurred')
         } finally {
             setIsLoading(false)
@@ -120,12 +122,16 @@ export function UserProfileForm({ user }: UserProfileFormProps) {
                                 id="email"
                                 type="email"
                                 {...form.register('email')}
-                                className="h-11"
+                                className="h-11 bg-muted"
                                 placeholder="your@email.com"
+                                readOnly
                             />
                             {form.formState.errors.email && (
                                 <p className="text-xs text-destructive">{form.formState.errors.email.message}</p>
                             )}
+                            <p className="text-xs text-muted-foreground">
+                                Email changes are handled separately in Account Security so they can require reauthentication and verification.
+                            </p>
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="phone">Phone Number</Label>

@@ -4,7 +4,7 @@ import PointsForm from './points-form'
 export default async function PointsAdminPage() {
     const [pairings, auditLogs] = await Promise.all([
         getPairingsForPointsAdmin(),
-        getPointsHistory() as Promise<any[]>
+        getPointsHistory()
     ])
 
     return (

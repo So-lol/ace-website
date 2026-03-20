@@ -8,11 +8,11 @@ import {
     SelectValue,
 } from '@/components/ui/select'
 import { Heart } from 'lucide-react'
-import { FormData } from './types'
+import { FormData, FormUpdater } from './types'
 
 interface PersonalStepProps {
     formData: FormData
-    update: (field: keyof FormData, value: any) => void
+    update: FormUpdater
 }
 
 export function PersonalStep({ formData, update }: PersonalStepProps) {

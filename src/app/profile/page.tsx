@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { getAuthenticatedUser } from '@/lib/auth-helpers'
 import { getUserProfile } from '@/lib/actions/users'
 import { UserProfileForm } from '@/components/dashboard/user-profile-form'
+import { AccountSecurityForm } from '@/components/dashboard/account-security-form'
 
 export const metadata: Metadata = {
     title: 'Profile',
@@ -41,13 +42,16 @@ export default async function ProfilePage() {
                         </Link>
                     </div>
 
-                    <UserProfileForm
-                        user={{
-                            ...profile,
-                            createdAt: profile.createdAt?.toMillis() || 0,
-                            updatedAt: profile.updatedAt?.toMillis() || 0,
-                        }}
-                    />
+                    <div className="space-y-6">
+                        <UserProfileForm
+                            user={{
+                                ...profile,
+                                createdAt: profile.createdAt?.toMillis() || 0,
+                                updatedAt: profile.updatedAt?.toMillis() || 0,
+                            }}
+                        />
+                        <AccountSecurityForm email={profile.email} />
+                    </div>
                 </div>
             </main>
 

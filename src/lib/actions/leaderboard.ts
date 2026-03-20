@@ -3,6 +3,33 @@
 import { adminDb } from '@/lib/firebase-admin'
 import { FamilyDoc, PairingDoc } from '@/types/firestore'
 
+type LegacyFamilyDoc = FamilyDoc & {
+    familyHeadId?: string
+}
+
+export interface FamilyLeaderboardEntry {
+    id: string
+    name: string
+    totalPoints: number
+    weeklyPoints: number
+    memberCount: number
+    createdAt: Date
+    updatedAt: Date
+}
+
+export interface PairingLeaderboardEntry {
+    id: string
+    familyId: string
+    mentorId: string
+    totalPoints: number
+    weeklyPoints: number
+    familyName: string
+    mentorName: string
+    menteeNames: string[]
+    createdAt: Date
+    updatedAt: Date
+}
+
 export async function getFamilyLeaderboard() {
     try {
         const [snapshot, pairingsSnap] = await Promise.all([
@@ -22,12 +49,11 @@ export async function getFamilyLeaderboard() {
         })
 
         return snapshot.docs.map(doc => {
-            const data = doc.data() as FamilyDoc
+            const data = doc.data() as LegacyFamilyDoc
 
             // Calculate unique users count (Members + Heads + Aunts/Uncles)
-            const heads = data.familyHeadIds || []
-            // Legacy support for single familyHeadId if needed
-            const legacyHead = (data as any).familyHeadId
+            const heads = [...(data.familyHeadIds || [])]
+            const legacyHead = data.familyHeadId
             if (legacyHead && !heads.includes(legacyHead)) {
                 heads.push(legacyHead)
             }
@@ -68,14 +94,14 @@ export async function getPairingLeaderboard() {
 
         // Fetch all families to map names
         const familiesSnap = await adminDb.collection('families').get()
-        const familyMap = new Map()
+        const familyMap = new Map<string, string>()
         familiesSnap.forEach(doc => {
             familyMap.set(doc.id, doc.data().name)
         })
 
         // Fetch all users to map names
         const usersSnap = await adminDb.collection('users').get()
-        const userMap = new Map()
+        const userMap = new Map<string, string>()
         usersSnap.forEach(doc => {
             userMap.set(doc.id, doc.data().name)
         })

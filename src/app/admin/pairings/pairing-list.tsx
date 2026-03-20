@@ -14,8 +14,7 @@ import {
     ArrowRight,
     Trophy,
     Trash2,
-    Loader2,
-    X
+    Loader2
 } from 'lucide-react'
 import {
     DropdownMenu,
@@ -45,16 +44,39 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { toast } from 'sonner'
 import { createPairing, deletePairing, updatePairing } from '@/lib/actions/pairings'
-import { useRouter } from 'next/navigation'
+
+interface PairingUser {
+    id: string
+    name: string
+    email: string
+    role: 'ADMIN' | 'MENTOR' | 'MENTEE'
+}
+
+interface PairingFamily {
+    id: string
+    name: string
+}
+
+interface PairingListItem {
+    id: string
+    familyId: string
+    mentorId: string
+    menteeIds: string[]
+    totalPoints?: number
+    submissions?: Array<{ id: string }>
+    createdAt?: Date
+    family?: PairingFamily
+    mentor?: PairingUser
+    mentees?: PairingUser[]
+}
 
 interface PairingListProps {
-    pairings: any[] // Using any for joined type simplicity, or stricter type if defined
-    families: any[]
-    users: any[]
+    pairings: PairingListItem[]
+    families: PairingFamily[]
+    users: PairingUser[]
 }
 
 export default function PairingList({ pairings, families, users }: PairingListProps) {
-    const router = useRouter()
     const [searchTerm, setSearchTerm] = useState('')
     const [isCreateOpen, setIsCreateOpen] = useState(false)
     const [isEditOpen, setIsEditOpen] = useState(false)
@@ -79,7 +101,7 @@ export default function PairingList({ pairings, families, users }: PairingListPr
         }
         acc[familyName].push(pairing)
         return acc
-    }, {} as Record<string, any[]>)
+    }, {} as Record<string, PairingListItem[]>)
 
     const resetForm = () => {
         setSelectedFamilyId('')
@@ -88,7 +110,7 @@ export default function PairingList({ pairings, families, users }: PairingListPr
         setEditingPairingId(null)
     }
 
-    const openEdit = (pairing: any) => {
+    const openEdit = (pairing: PairingListItem) => {
         setEditingPairingId(pairing.id)
         setSelectedFamilyId(pairing.familyId)
         setSelectedMentorId(pairing.mentorId)
@@ -113,7 +135,7 @@ export default function PairingList({ pairings, families, users }: PairingListPr
             } else {
                 toast.error(result.error || 'Failed to create pairing')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         } finally {
             setIsLoading(false)
@@ -138,7 +160,7 @@ export default function PairingList({ pairings, families, users }: PairingListPr
             } else {
                 toast.error(result.error || 'Failed to update pairing')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         } finally {
             setIsLoading(false)
@@ -154,7 +176,7 @@ export default function PairingList({ pairings, families, users }: PairingListPr
             } else {
                 toast.error('Failed to delete')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         }
     }
@@ -264,7 +286,7 @@ export default function PairingList({ pairings, families, users }: PairingListPr
                                             <SelectValue placeholder="Select a mentor" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {availableMentors.map((u: any) => (
+                                            {availableMentors.map((u) => (
                                                 <SelectItem key={u.id} value={u.id}>
                                                     {u.name} ({u.email})
                                                 </SelectItem>
@@ -280,7 +302,7 @@ export default function PairingList({ pairings, families, users }: PairingListPr
                                         {availableMentees.length === 0 ? (
                                             <p className="text-sm text-muted-foreground text-center py-4">All mentees have been assigned to pairings</p>
                                         ) : (
-                                            availableMentees.map((u: any) => (
+                                            availableMentees.map((u) => (
                                                 <div key={u.id} className="flex items-center space-x-2">
                                                     <Checkbox
                                                         id={`mentee-${u.id}`}
@@ -351,7 +373,7 @@ export default function PairingList({ pairings, families, users }: PairingListPr
                                         <SelectContent>
                                             {/* Include current mentor even if not in 'availableMentors' check strictly? 
                                                 Actually availableMentors logic covers all mentors. */}
-                                            {availableMentors.map((u: any) => (
+                                            {availableMentors.map((u) => (
                                                 <SelectItem key={u.id} value={u.id}>
                                                     {u.name} ({u.email})
                                                 </SelectItem>
@@ -364,7 +386,7 @@ export default function PairingList({ pairings, families, users }: PairingListPr
                                 <div className="space-y-2">
                                     <Label>Mentees</Label>
                                     <div className="border rounded-md p-4 max-h-60 overflow-y-auto space-y-2">
-                                        {availableMentees.map((u: any) => (
+                                        {availableMentees.map((u) => (
                                             <div key={u.id} className="flex items-center space-x-2">
                                                 <Checkbox
                                                     id={`edit-mentee-${u.id}`}
@@ -411,7 +433,7 @@ export default function PairingList({ pairings, families, users }: PairingListPr
 
             {/* Pairings List */}
             <div className="space-y-8">
-                {(Object.entries(familyGroups) as [string, any[]][]).map(([familyName, familyPairings]) => (
+                {Object.entries(familyGroups).map(([familyName, familyPairings]) => (
                     <div key={familyName}>
                         <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
                             <Users className="w-5 h-5 text-muted-foreground" />
@@ -421,7 +443,7 @@ export default function PairingList({ pairings, families, users }: PairingListPr
                             </Badge>
                         </h2>
                         <div className="grid gap-4">
-                            {(familyPairings as any[]).map((pairing: any) => (
+                            {familyPairings.map((pairing) => (
                                 <Card key={pairing.id}>
                                     <CardContent className="p-4">
                                         <div className="flex items-start justify-between">
@@ -444,8 +466,8 @@ export default function PairingList({ pairings, families, users }: PairingListPr
                                                     {/* Mentees */}
                                                     <div className="flex flex-wrap items-center gap-2">
                                                         {pairing.mentees && pairing.mentees.length > 0 ? (
-                                                            pairing.mentees.map((mentee: any, i: number) => (
-                                                                <div key={mentee.id || i} className="flex items-center gap-2 bg-muted/50 px-2 py-1 rounded-full">
+                                                            pairing.mentees.map((mentee) => (
+                                                                <div key={mentee.id} className="flex items-center gap-2 bg-muted/50 px-2 py-1 rounded-full">
                                                                     <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center shrink-0 border border-background">
                                                                         <Users className="w-3 h-3 text-muted-foreground" />
                                                                     </div>

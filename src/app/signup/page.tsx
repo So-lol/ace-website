@@ -10,10 +10,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Cat, ArrowLeft, Loader2 } from 'lucide-react'
-import { auth } from '@/lib/firebase'
+import { auth, isFirebaseClientConfigured } from '@/lib/firebase'
 import { createUserWithEmailAndPassword, sendEmailVerification, updateProfile } from 'firebase/auth'
 import { createUserProfile } from '@/lib/actions/auth'
+import { reportClientAuthFailure } from '@/lib/actions/auth-observability'
 import { toast } from 'sonner'
+import { getAuthActionCodeSettings, normalizeEmail } from '@/lib/auth-utils'
+import { FirebaseError } from 'firebase/app'
 
 export default function SignupPage() {
     const router = useRouter()
@@ -47,9 +50,15 @@ export default function SignupPage() {
             return
         }
 
+        if (!auth || !isFirebaseClientConfigured) {
+            toast.error('Firebase Authentication is not configured for this environment.')
+            setIsLoading(false)
+            return
+        }
+
         try {
             // 1. Create user with Firebase client SDK
-            const userCredential = await createUserWithEmailAndPassword(auth, email.toLowerCase(), password)
+            const userCredential = await createUserWithEmailAndPassword(auth, normalizeEmail(email), password)
             const user = userCredential.user
 
             // 2. Send verification email IMMEDIATELY after creation
@@ -65,12 +74,23 @@ export default function SignupPage() {
 
             let emailSent = false
             try {
-                await sendEmailVerification(user)
+                const actionCodeSettings = getAuthActionCodeSettings(window.location.origin) || undefined
+                await sendEmailVerification(user, actionCodeSettings)
                 emailSent = true
                 console.log('[Signup] Verification email sent successfully')
-            } catch (emailError: any) {
-                console.error('[Signup] sendEmailVerification failed:', emailError.code, emailError.message)
-                toast.warning(`Could not send verification email (${emailError.code}). Use the resend button on the next page.`)
+            } catch (emailError: unknown) {
+                const authError = emailError as FirebaseError
+                await reportClientAuthFailure({
+                    type: 'email_verification_resend_failure',
+                    route: '/signup',
+                    email,
+                    uid: user.uid,
+                    errorCode: authError.code,
+                    errorMessage: authError.message || 'Failed to send verification email immediately after signup.',
+                    metadata: { phase: 'post-signup-send' },
+                })
+                console.error('[Signup] sendEmailVerification failed:', authError.code, authError.message)
+                toast.warning(`Could not send verification email (${authError.code}). Use the resend button on the next page.`)
             }
 
             // 3. Update display name (non-blocking for verification)
@@ -94,23 +114,31 @@ export default function SignupPage() {
                 toast.success('Account created! Click "Resend" on the next page to get your verification email.')
             }
             router.push('/verify-email')
-        } catch (error: any) {
+        } catch (error: unknown) {
+            const authError = error as FirebaseError
+            await reportClientAuthFailure({
+                type: 'signup_failure',
+                route: '/signup',
+                email,
+                errorCode: authError.code || 'auth/unknown',
+                errorMessage: authError.message || 'Unexpected Firebase signup failure.',
+            })
             // Only log unexpected errors, not validation errors
             const isValidationError = [
                 'auth/email-already-in-use',
                 'auth/invalid-email',
                 'auth/weak-password'
-            ].includes(error.code)
+            ].includes(authError.code)
 
             if (!isValidationError) {
                 console.error('Signup error:', error)
             }
 
-            if (error.code === 'auth/email-already-in-use') {
+            if (authError.code === 'auth/email-already-in-use') {
                 toast.error('This email is already registered. Please sign in.')
-            } else if (error.code === 'auth/invalid-email') {
+            } else if (authError.code === 'auth/invalid-email') {
                 toast.error('Please enter a valid email address.')
-            } else if (error.code === 'auth/weak-password') {
+            } else if (authError.code === 'auth/weak-password') {
                 toast.error('Password is too weak. Please use a stronger password.')
             } else {
                 toast.error('Failed to create account. Please try again.')

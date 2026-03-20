@@ -3,8 +3,7 @@
 import { requireAdmin } from '@/lib/auth-helpers'
 import { adminDb } from '@/lib/firebase-admin'
 import { revalidatePath } from 'next/cache'
-import { UserRole } from '@/types/index'
-import { UserDoc, PairingDoc } from '@/types/firestore'
+import { UserDoc } from '@/types/firestore'
 import { Timestamp } from 'firebase-admin/firestore'
 
 export type CSVImportResult = {
@@ -50,9 +49,8 @@ function parseCSV(content: string): string[][] {
  * Import users from CSV (admin only)
  */
 export async function importUsersFromCSV(csvContent: string): Promise<CSVImportResult> {
-    let adminUser
     try {
-        adminUser = await requireAdmin()
+        await requireAdmin()
     } catch {
         return { success: false, error: 'Only admins can import users' }
     }

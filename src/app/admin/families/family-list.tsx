@@ -25,7 +25,6 @@ import {
     RotateCcw,
     Loader2,
     Crown,
-    UserPlus,
     X
 } from 'lucide-react'
 import {
@@ -52,7 +51,6 @@ import {
     SelectValue,
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
-import { FamilyDoc } from '@/types/firestore'
 import { createFamily, updateFamily, deleteFamily } from '@/lib/actions/families'
 import { toast } from 'sonner'
 
@@ -152,7 +150,7 @@ export default function FamilyList({ families, users }: FamilyListProps) {
             } else {
                 toast.error(result.error || 'Failed to create')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         } finally {
             setIsLoading(false)
@@ -172,7 +170,7 @@ export default function FamilyList({ families, users }: FamilyListProps) {
             } else {
                 toast.error(result.error || 'Failed to update')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         } finally {
             setIsLoading(false)
@@ -194,7 +192,7 @@ export default function FamilyList({ families, users }: FamilyListProps) {
             } else {
                 toast.error(result.error || 'Failed to update roles')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         } finally {
             setIsLoading(false)
@@ -209,7 +207,7 @@ export default function FamilyList({ families, users }: FamilyListProps) {
             } else {
                 toast.error('Failed to update status')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         }
     }
@@ -223,7 +221,7 @@ export default function FamilyList({ families, users }: FamilyListProps) {
             } else {
                 toast.error('Failed to delete')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         }
     }

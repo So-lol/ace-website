@@ -2,7 +2,6 @@ import { Metadata } from 'next'
 import { NavbarWithAuthClient, Footer } from '@/components/layout'
 import LeaderboardClient from './leaderboard-client'
 import { getFamilyLeaderboard, getPairingLeaderboard } from '@/lib/actions/leaderboard'
-import { FamilyDoc } from '@/types/firestore'
 
 export const metadata: Metadata = {
     title: 'Leaderboard',
@@ -14,8 +13,6 @@ export default async function LeaderboardPage() {
         getFamilyLeaderboard(),
         getPairingLeaderboard()
     ])
-
-    // cast families to fix any type issues if necessary, usually it's derived from server action
 
     return (
         <div className="min-h-screen flex flex-col">

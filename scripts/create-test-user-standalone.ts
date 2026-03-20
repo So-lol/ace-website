@@ -51,7 +51,7 @@ async function main() {
             uid = user.uid;
             console.log('User already exists in Auth, updating password...');
             await adminAuth.updateUser(uid, { password, emailVerified: true });
-        } catch (e) {
+        } catch {
             console.log('User does not exist in Auth, creating...');
             const user = await adminAuth.createUser({
                 email,

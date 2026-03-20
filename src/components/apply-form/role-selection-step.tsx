@@ -1,10 +1,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Sparkles } from 'lucide-react'
-import { FormData } from './types'
+import { FormData, FormUpdater } from './types'
 
 interface RoleSelectionStepProps {
     formData: FormData
-    update: (field: keyof FormData, value: any) => void
+    update: FormUpdater
 }
 
 export function RoleSelectionStep({ formData, update }: RoleSelectionStepProps) {

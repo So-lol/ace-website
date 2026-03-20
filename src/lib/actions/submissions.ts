@@ -4,10 +4,8 @@ import { getAuthenticatedUser, requireAdmin } from '@/lib/auth-helpers'
 import { uploadFile, deleteFile, adminDb } from '@/lib/firebase-admin'
 import { revalidatePath } from 'next/cache'
 import { Timestamp, FieldValue } from 'firebase-admin/firestore'
-
-// Storage bucket name
-const STORAGE_BUCKET = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
-import { SubmissionDoc, PairingDoc, UserDoc, SubmissionStatus } from '@/types/firestore'
+import { SubmissionDoc, PairingDoc, SubmissionStatus } from '@/types/firestore'
+import { getErrorMessage } from '@/lib/errors'
 
 export type UploadResult = {
     success: boolean
@@ -20,6 +18,48 @@ export type SubmissionResult = {
     success: boolean
     error?: string
     submissionId?: string
+}
+
+type StoredDocumentData = Record<string, unknown>
+
+export interface AdminSubmissionListItem {
+    id: string
+    pairingId: string
+    submitterId: string
+    weekNumber: number
+    year: number
+    imageUrl: string
+    imagePath: string
+    status: SubmissionStatus
+    basePoints: number
+    bonusPoints: number
+    totalPoints: number
+    reviewReason?: string
+    bonusActivityIds: string[]
+    createdAt: Date
+    updatedAt: Date
+    reviewedAt: Date | null
+    submitter: {
+        id: string
+        name: string
+        email: string
+    }
+    pairing: {
+        id: string
+        family: {
+            name: string
+        }
+        mentor: {
+            name: string
+        }
+        menteeIds: string[]
+    } | null
+    bonusActivities: Array<{
+        bonusActivity: {
+            id: string
+            name?: string
+        }
+    }>
 }
 
 /**
@@ -283,9 +323,9 @@ export async function approveSubmission(submissionId: string): Promise<Submissio
         revalidatePath('/leaderboard')
 
         return { success: true, submissionId }
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Approval error:', error)
-        return { success: false, error: error.message || 'Failed to approve submission' }
+        return { success: false, error: getErrorMessage(error, 'Failed to approve submission') }
     }
 }
 
@@ -348,9 +388,9 @@ export async function rejectSubmission(submissionId: string, reason: string): Pr
         revalidatePath('/admin/submissions')
 
         return { success: true, submissionId }
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Rejection error:', error)
-        return { success: false, error: error.message || 'Failed to reject submission' }
+        return { success: false, error: getErrorMessage(error, 'Failed to reject submission') }
     }
 }
 
@@ -358,7 +398,7 @@ export async function rejectSubmission(submissionId: string, reason: string): Pr
  * Get submissions for admin review
  * Note: Returns manually constructed object with joined data
  */
-export async function getSubmissions(status?: SubmissionStatus) {
+export async function getSubmissions(status?: SubmissionStatus): Promise<AdminSubmissionListItem[]> {
     try {
         // Secure action: Only admins can view all submissions
         await requireAdmin()
@@ -393,9 +433,11 @@ export async function getSubmissions(status?: SubmissionStatus) {
             const refs = uniqueIds.map(id => adminDb.collection(collection).doc(id))
             const snaps = await adminDb.getAll(...refs)
 
-            const map = new Map<string, any>()
+            const map = new Map<string, StoredDocumentData>()
             snaps.forEach(snap => {
-                if (snap.exists) map.set(snap.id, snap.data())
+                if (snap.exists) {
+                    map.set(snap.id, snap.data() as StoredDocumentData)
+                }
             })
             return map
         }
@@ -410,9 +452,10 @@ export async function getSubmissions(status?: SubmissionStatus) {
         const familyIds = new Set<string>()
         const mentorIds = new Set<string>()
 
-        pairingsMap.forEach((pairing: PairingDoc) => {
-            if (pairing.familyId) familyIds.add(pairing.familyId)
-            if (pairing.mentorId) mentorIds.add(pairing.mentorId)
+        pairingsMap.forEach((pairing) => {
+            const pairingData = pairing as PairingDoc
+            if (pairingData.familyId) familyIds.add(pairingData.familyId)
+            if (pairingData.mentorId) mentorIds.add(pairingData.mentorId)
         })
 
         // Fetch secondary relations
@@ -437,20 +480,49 @@ export async function getSubmissions(status?: SubmissionStatus) {
 
             let pairingData = null
             if (sub.pairingId && pairingsMap.has(sub.pairingId)) {
-                const p = pairingsMap.get(sub.pairingId)
-                const family = familiesMap.get(p.familyId) || { name: 'Unknown Family' }
-                const mentor = usersMap.get(p.mentorId) || { name: 'Unknown Mentor' }
-                pairingData = { ...p, id: sub.pairingId, family, mentor }
+                const pairing = pairingsMap.get(sub.pairingId) as PairingDoc
+                const family = familiesMap.get(pairing.familyId) || { name: 'Unknown Family' }
+                const mentor = usersMap.get(pairing.mentorId) || { name: 'Unknown Mentor' }
+                pairingData = {
+                    id: sub.pairingId,
+                    family: { name: String(family.name || 'Unknown Family') },
+                    mentor: { name: String(mentor.name || 'Unknown Mentor') },
+                    menteeIds: pairing.menteeIds || [],
+                }
             }
 
-            const bonusActivities = (sub.bonusActivityIds || []).map(id => {
+            const bonusActivities: AdminSubmissionListItem['bonusActivities'] = (sub.bonusActivityIds || []).reduce((acc, id) => {
                 const b = bonusesMap.get(id)
-                return b ? { bonusActivity: { ...b, id } } : null
-            }).filter(Boolean)
+                if (b) {
+                    acc.push({
+                        bonusActivity: {
+                            id,
+                            name: typeof b.name === 'string' ? b.name : undefined,
+                        },
+                    })
+                }
+                return acc
+            }, [] as AdminSubmissionListItem['bonusActivities'])
 
             return {
-                ...sub,
-                submitter: { ...submitter, id: sub.submitterId },
+                id: sub.id,
+                pairingId: sub.pairingId,
+                submitterId: sub.submitterId,
+                weekNumber: sub.weekNumber,
+                year: sub.year,
+                imageUrl: sub.imageUrl,
+                imagePath: sub.imagePath,
+                status: sub.status,
+                basePoints: sub.basePoints,
+                bonusPoints: sub.bonusPoints,
+                totalPoints: sub.totalPoints,
+                reviewReason: sub.reviewReason,
+                bonusActivityIds: sub.bonusActivityIds || [],
+                submitter: {
+                    id: sub.submitterId,
+                    name: typeof submitter.name === 'string' ? submitter.name : 'Unknown',
+                    email: typeof submitter.email === 'string' ? submitter.email : 'unknown',
+                },
                 pairing: pairingData,
                 bonusActivities,
                 // Serialize dates

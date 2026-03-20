@@ -5,15 +5,31 @@ import { AnnouncementDoc } from '@/types/firestore'
 import { Timestamp } from 'firebase-admin/firestore'
 import { revalidatePath } from 'next/cache'
 import { logAuditAction } from '@/lib/actions/audit'
-import { getAuthenticatedUser, requireAdmin } from '@/lib/auth-helpers'
+import { requireAdmin } from '@/lib/auth-helpers'
+import { getErrorMessage } from '@/lib/errors'
+
+type AnnouncementTimestampLike = Timestamp | Date | null | undefined
+type AnnouncementUpdateInput = Omit<Partial<AnnouncementDoc>, 'publishedAt' | 'createdAt' | 'updatedAt'> & {
+    publishedAt?: Date | null
+}
+type AnnouncementWriteData = Partial<Omit<AnnouncementDoc, 'publishedAt' | 'createdAt' | 'updatedAt'>> & {
+    updatedAt: Timestamp
+    publishedAt?: Timestamp | null
+}
+
+function toAnnouncementDate(value: AnnouncementTimestampLike) {
+    if (value instanceof Timestamp) {
+        return value.toDate()
+    }
+
+    return value instanceof Date ? value : null
+}
 
 export async function getAnnouncements(publishedOnly = false) {
     try {
-        let query = adminDb.collection('announcements').orderBy('createdAt', 'desc')
-
-        if (publishedOnly) {
-            query = query.where('isPublished', '==', true) as any
-        }
+        const query = publishedOnly
+            ? adminDb.collection('announcements').where('isPublished', '==', true).orderBy('createdAt', 'desc')
+            : adminDb.collection('announcements').orderBy('createdAt', 'desc')
 
         const snapshot = await query.get()
         let announcements = snapshot.docs.map(doc => ({
@@ -24,7 +40,7 @@ export async function getAnnouncements(publishedOnly = false) {
         if (publishedOnly) {
             const now = new Date()
             announcements = announcements.filter(a => {
-                const pDate = a.publishedAt?.toDate ? a.publishedAt.toDate() : (a.publishedAt as any instanceof Date ? a.publishedAt : null)
+                const pDate = toAnnouncementDate(a.publishedAt)
                 return pDate && pDate <= now
             })
         }
@@ -78,14 +94,19 @@ export async function createAnnouncement(data: { title: string; content: string;
     }
 }
 
-export async function updateAnnouncement(id: string, data: Omit<Partial<AnnouncementDoc>, 'publishedAt'> & { publishedAt?: Date | null }) {
+export async function updateAnnouncement(id: string, data: AnnouncementUpdateInput) {
     try {
         const admin = await requireAdmin()
 
-        const updateData: any = {
-            ...data,
+        const updateData: AnnouncementWriteData = {
             updatedAt: Timestamp.now(),
         }
+        if (data.title !== undefined) updateData.title = data.title
+        if (data.content !== undefined) updateData.content = data.content
+        if (data.authorId !== undefined) updateData.authorId = data.authorId
+        if (data.authorName !== undefined) updateData.authorName = data.authorName
+        if (data.isPublished !== undefined) updateData.isPublished = data.isPublished
+        if (data.isPinned !== undefined) updateData.isPinned = data.isPinned
 
         if (data.isPublished === true) {
             // If explicit date provided, use it
@@ -121,9 +142,9 @@ export async function updateAnnouncement(id: string, data: Omit<Partial<Announce
         )
 
         return { success: true }
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Error updating announcement:', error)
-        return { success: false, error: 'Failed to update announcement' }
+        return { success: false, error: getErrorMessage(error, 'Failed to update announcement') }
     }
 }
 

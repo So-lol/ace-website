@@ -3,6 +3,11 @@ import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
 import { getAuth } from 'firebase-admin/auth'
 
+type FirebaseVerificationError = {
+    code?: string
+    message?: string
+}
+
 async function verify() {
     console.log('Verifying Firebase Admin Connection...')
     try {
@@ -35,11 +40,13 @@ async function verify() {
         console.log('✅ Auth connected. User count:', users.length)
 
         console.log('Firebase Admin configuration is VALID.')
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('❌ Verification failed:', error)
-        if (error.code === 'app/invalid-credential') {
+        const firebaseError = error as FirebaseVerificationError
+
+        if (firebaseError.code === 'app/invalid-credential') {
             console.error('Tip: Check your FIREBASE_ADMIN_PRIVATE_KEY and CLIENT_EMAIL.')
-        } else if (error.message && error.message.includes('Missing credentials')) {
+        } else if (firebaseError.message?.includes('Missing credentials')) {
             console.error('Check your .env file.')
         }
         process.exit(1)

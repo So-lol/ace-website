@@ -4,7 +4,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Bell, Calendar, Pin, User } from 'lucide-react'
 import { getAnnouncements } from '@/lib/actions/announcements'
-import { AnnouncementDoc } from '@/types/firestore'
 
 export const metadata: Metadata = {
     title: 'Announcements',

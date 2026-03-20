@@ -1,11 +1,11 @@
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { User } from 'lucide-react'
-import { FormData } from './types'
+import { FormData, FormUpdater } from './types'
 
 interface ContactStepProps {
     formData: FormData
-    update: (field: keyof FormData, value: any) => void
+    update: FormUpdater
 }
 
 export function ContactStep({ formData, update }: ContactStepProps) {

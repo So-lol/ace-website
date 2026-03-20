@@ -10,7 +10,7 @@ import { submitAceApplication } from '@/lib/actions/ace-applications'
 import { AceRole } from '@/types/index'
 
 // Modular Components
-import { FormData, initialFormData, TOTAL_STEPS } from '@/components/apply-form/types'
+import { FormData, FormUpdater, initialFormData, TOTAL_STEPS } from '@/components/apply-form/types'
 import { FormProgress } from '@/components/apply-form/form-progress'
 import { ContactStep } from '@/components/apply-form/contact-step'
 import { AcademicStep } from '@/components/apply-form/academic-step'
@@ -60,7 +60,7 @@ export default function ApplyPage() {
         }
     }, [formData, step, isLoaded])
 
-    const update = (field: keyof FormData, value: any) => {
+    const update: FormUpdater = (field, value) => {
         setFormData((prev) => ({ ...prev, [field]: value }))
     }
 

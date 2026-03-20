@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from '@/components/ui/sheet'
@@ -51,18 +51,17 @@ import { signOut as firebaseSignOut } from 'firebase/auth'
 
 export function Navbar({ user }: NavbarProps) {
     const pathname = usePathname()
-    const router = useRouter()
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
     const handleSignOut = async () => {
         try {
-            // 1. Sign out from Firebase Client SDK
-            await firebaseSignOut(auth)
-
-            // 2. Sign out from Server Session
+            // Revoke the server session before clearing client auth so the
+            // server still has a trusted session cookie to identify the user.
             await signOut()
+            if (auth) {
+                await firebaseSignOut(auth)
+            }
 
-            // 3. Full page navigation for reliable redirect (same pattern as login)
             window.location.href = '/login'
         } catch (error) {
             console.error('Error signing out:', error)

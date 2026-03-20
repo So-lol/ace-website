@@ -4,9 +4,17 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
+    "dev:emulators": "NEXT_PUBLIC_FIREBASE_USE_EMULATORS=1 FIREBASE_USE_EMULATORS=1 FIREBASE_EMULATOR_PROJECT_ID=demo-ace-website GCLOUD_PROJECT=demo-ace-website FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:9099 next dev --webpack --hostname 127.0.0.1 --port 3004",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint .",
+    "ops:auth-report": "node --import tsx scripts/report-auth-failures.ts",
+    "test:unit": "node --import tsx --test tests/unit/**/*.test.ts",
+    "test:smoke": "npx playwright test tests/auth-smoke.spec.ts",
+    "validate:firebase": "node --import tsx scripts/verify-firebase.ts",
+    "validate:firebase:project": "node --import tsx scripts/validate-firebase-production.ts",
+    "emulators:start": "firebase emulators:start --project demo-ace-website",
+    "emulators:exec:auth": "firebase emulators:exec --only auth,firestore --project demo-ace-website"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -46,6 +54,7 @@
     "dotenv": "^17.2.3",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "firebase-tools": "^14.23.0",
     "tailwindcss": "^4",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",

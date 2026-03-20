@@ -5,8 +5,16 @@ import { adminDb } from '@/lib/firebase-admin'
 import { revalidatePath } from 'next/cache'
 import { Timestamp, FieldValue } from 'firebase-admin/firestore'
 import { PairingDoc, UserDoc, FamilyDoc, SubmissionDoc } from '@/types/firestore' // Raw types
-import { User, Family, Submission } from '@/types/index' // Client types
+import { User, Submission } from '@/types/index' // Client types
 import { logAuditAction } from '@/lib/actions/audit'
+import { getErrorMessage } from '@/lib/errors'
+
+type PairingUpdateData = {
+    familyId?: string
+    mentorId?: string
+    menteeIds?: string[]
+    updatedAt: Timestamp
+}
 
 export type PairingResult = {
     success: boolean
@@ -212,9 +220,9 @@ export async function createPairing(
         revalidatePath('/admin/families')
 
         return { success: true, pairingId: pairingRef.id }
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Pairing creation error:', error)
-        return { success: false, error: 'Failed to create pairing' }
+        return { success: false, error: getErrorMessage(error, 'Failed to create pairing') }
     }
 }
 
@@ -338,7 +346,7 @@ export async function updatePairing(
         }
 
         const currentData = snap.data() as PairingDoc
-        const updates: any = { updatedAt: Timestamp.now() }
+        const updates: PairingUpdateData = { updatedAt: Timestamp.now() }
 
         const currentFamilyId = currentData.familyId
         const newFamilyId = data.familyId || currentFamilyId
@@ -429,8 +437,8 @@ export async function updatePairing(
         revalidatePath('/admin/families')
         return { success: true, pairingId }
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Update pairing error:', error)
-        return { success: false, error: error.message || 'Failed to update pairing' }
+        return { success: false, error: getErrorMessage(error, 'Failed to update pairing') }
     }
 }

@@ -7,9 +7,12 @@ import { Navbar, Footer } from '@/components/layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Cat, ArrowLeft, Mail, RefreshCw, CheckCircle2, Loader2 } from 'lucide-react'
-import { auth } from '@/lib/firebase'
+import { auth, isFirebaseClientConfigured } from '@/lib/firebase'
+import { reportClientAuthFailure } from '@/lib/actions/auth-observability'
 import { sendEmailVerification, onAuthStateChanged } from 'firebase/auth'
 import { toast } from 'sonner'
+import { FirebaseError } from 'firebase/app'
+import { getAuthActionCodeSettings } from '@/lib/auth-utils'
 
 export default function VerifyEmailPage() {
     const router = useRouter()
@@ -19,6 +22,12 @@ export default function VerifyEmailPage() {
     const [countdown, setCountdown] = useState(0)
 
     useEffect(() => {
+        if (!auth || !isFirebaseClientConfigured) {
+            toast.error('Firebase Authentication is not configured for this environment.')
+            router.push('/login')
+            return
+        }
+
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             if (user) {
                 setEmail(user.email)
@@ -50,10 +59,11 @@ export default function VerifyEmailPage() {
 
     // Poll for verification status every 3 seconds (faster detection)
     useEffect(() => {
-        if (isVerified) return
+        if (!auth || !isFirebaseClientConfigured || isVerified) return
+        const authInstance = auth
 
         const interval = setInterval(async () => {
-            const user = auth.currentUser
+            const user = authInstance.currentUser
             if (user) {
                 await user.reload()
                 if (user.emailVerified) {
@@ -71,6 +81,12 @@ export default function VerifyEmailPage() {
     }, [isVerified, router])
 
     async function handleResendEmail() {
+        if (!auth || !isFirebaseClientConfigured) {
+            toast.error('Firebase Authentication is not configured for this environment.')
+            router.push('/login')
+            return
+        }
+
         const user = auth.currentUser
         if (!user) {
             toast.error('No user found. Please sign up again.')
@@ -87,20 +103,28 @@ export default function VerifyEmailPage() {
 
         setIsLoading(true)
         try {
-            // Use bare sendEmailVerification — no actionCodeSettings
-            // This avoids auth/unauthorized-continue-uri errors from custom domains
-            await sendEmailVerification(user)
+            const actionCodeSettings = getAuthActionCodeSettings(window.location.origin)
+            await sendEmailVerification(user, actionCodeSettings || undefined)
             toast.success('Verification email sent! Check your inbox and spam folder.')
             setCountdown(60) // 60 second cooldown
             console.log('[VerifyEmail] Verification email sent successfully')
-        } catch (error: any) {
-            console.error('[VerifyEmail] sendEmailVerification failed:', error.code, error.message)
+        } catch (error: unknown) {
+            const authError = error as FirebaseError
+            await reportClientAuthFailure({
+                type: 'email_verification_resend_failure',
+                route: '/verify-email',
+                email: user.email,
+                uid: user.uid,
+                errorCode: authError.code || 'auth/unknown',
+                errorMessage: authError.message || 'Resending verification email failed.',
+            })
+            console.error('[VerifyEmail] sendEmailVerification failed:', authError.code, authError.message)
 
-            if (error.code === 'auth/too-many-requests') {
+            if (authError.code === 'auth/too-many-requests') {
                 toast.error('Firebase is rate-limiting email sends. Please wait 5-10 minutes before trying again.')
                 setCountdown(300) // 5 minute cooldown for rate limits
             } else {
-                toast.error(`Email send failed (${error.code}): ${error.message}`)
+                toast.error(`Email send failed (${authError.code}): ${authError.message}`)
             }
         } finally {
             setIsLoading(false)

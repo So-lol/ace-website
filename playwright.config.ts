@@ -1,20 +1,27 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:3004';
+const useExternalBaseUrl = Boolean(process.env.PLAYWRIGHT_BASE_URL);
+
 export default defineConfig({
     testDir: './tests',
-    fullyParallel: true,
+    fullyParallel: false,
     forbidOnly: !!process.env.CI,
     retries: process.env.CI ? 2 : 0,
-    workers: process.env.CI ? 1 : undefined,
+    workers: 1,
+    timeout: 60_000,
+    expect: {
+        timeout: 10_000,
+    },
     reporter: 'list',
     use: {
-        baseURL: 'http://localhost:3000',
+        baseURL,
         trace: 'on-first-retry',
         screenshot: 'only-on-failure',
     },
-    webServer: {
-        command: 'npm run dev',
-        url: 'http://localhost:3004',
+    webServer: useExternalBaseUrl ? undefined : {
+        command: 'npm run dev -- --hostname 127.0.0.1 --port 3004',
+        url: 'http://127.0.0.1:3004',
         reuseExistingServer: !process.env.CI,
         timeout: 120 * 1000,
     },

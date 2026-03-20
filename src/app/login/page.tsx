@@ -10,10 +10,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Cat, ArrowLeft, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { verifyAndSyncUser } from '@/lib/actions/auth'
+import { reportClientAuthFailure } from '@/lib/actions/auth-observability'
 import { useAuth } from '@/lib/auth-context'
-import { auth } from '@/lib/firebase'
+import { auth, isFirebaseClientConfigured } from '@/lib/firebase'
 import { signInWithEmailAndPassword } from 'firebase/auth'
 import { toast } from 'sonner'
+import { normalizeEmail, sanitizeRedirectPath } from '@/lib/auth-utils'
+import { FirebaseError } from 'firebase/app'
 
 function LoginForm() {
     const router = useRouter()
@@ -24,20 +27,10 @@ function LoginForm() {
     const message = searchParams.get('message')
     const error = searchParams.get('error')
 
-    // Security: Validate redirect path to prevent Open Redirect vulnerabilities
-    const safeRedirect = (path: string | null) => {
-        if (!path) return '/dashboard'
-        // Ensure path is relative and doesn't start with // (protocol relative)
-        if (path.startsWith('/') && !path.startsWith('//')) {
-            return path
-        }
-        return '/dashboard'
-    }
-
     // Redirect if already logged in
     useEffect(() => {
         if (user && !isLoading) {
-            const target = safeRedirect(redirectPath)
+            const target = sanitizeRedirectPath(redirectPath)
             router.push(target)
         }
     }, [user, isLoading, redirectPath, router])
@@ -56,17 +49,31 @@ function LoginForm() {
             return
         }
 
+        if (!auth || !isFirebaseClientConfigured) {
+            toast.error('Firebase Authentication is not configured for this environment.')
+            setIsLoading(false)
+            return
+        }
+
         try {
             // Tell AuthContext to skip the next onIdTokenChanged sync
             // so it doesn't race with our verifyAndSyncUser call below
             skipNextSync()
 
             // Sign in with Firebase client SDK
-            const userCredential = await signInWithEmailAndPassword(auth, email.toLowerCase(), password)
+            const userCredential = await signInWithEmailAndPassword(auth, normalizeEmail(email), password)
             const user = userCredential.user
 
             // Check if email is verified
             if (!user.emailVerified) {
+                await reportClientAuthFailure({
+                    type: 'login_failure',
+                    route: '/login',
+                    email,
+                    uid: user.uid,
+                    errorCode: 'auth/email-not-verified',
+                    errorMessage: 'User authenticated with Firebase but email verification is still pending.',
+                })
                 toast.error('Please verify your email address first.')
                 setIsLoading(false)
                 router.push('/verify-email')
@@ -81,18 +88,33 @@ function LoginForm() {
             if (result.success) {
                 toast.success('Signed in successfully!')
 
-                const targetPath = safeRedirect(redirectPath || result.redirectTo || null)
+                const targetPath = sanitizeRedirectPath(redirectPath || result.redirectTo || null)
 
                 // Use window.location for reliable redirect after login
                 // This forces a full page load, ensuring middleware re-evaluates the cookie
                 window.location.href = targetPath
                 return // Exit early - don't run any more code
             } else {
+                await reportClientAuthFailure({
+                    type: 'login_failure',
+                    route: '/login',
+                    email,
+                    errorCode: 'server/session-sync-rejected',
+                    errorMessage: result.error || 'Server-side session sync failed after client sign-in.',
+                })
                 toast.error(result.error || 'Failed to sign in')
                 setIsLoading(false)
             }
-        } catch (err: any) {
-            const errorCode = err.code || ''
+        } catch (err: unknown) {
+            const authError = err as FirebaseError
+            const errorCode = authError.code || ''
+            await reportClientAuthFailure({
+                type: 'login_failure',
+                route: '/login',
+                email,
+                errorCode: errorCode || 'auth/unknown',
+                errorMessage: authError.message || 'Unexpected Firebase login failure.',
+            })
 
             if (errorCode === 'auth/invalid-credential' || errorCode === 'auth/user-not-found' || errorCode === 'auth/wrong-password') {
                 toast.error('Invalid email or password')
@@ -102,7 +124,7 @@ function LoginForm() {
                 toast.error('This account has been disabled.')
             } else {
                 console.error('Unexpected sign in error:', err)
-                toast.error(`Sign in error: ${err.message || 'An unexpected error occurred'}`)
+                toast.error(`Sign in error: ${authError.message || 'An unexpected error occurred'}`)
             }
             setIsLoading(false)
         }

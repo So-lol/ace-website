@@ -44,7 +44,7 @@ export default function SubmitForm({ bonusActivities, weekNumber, year }: Submit
     const [preview, setPreview] = useState<string | null>(null)
     const [selectedBonuses, setSelectedBonuses] = useState<string[]>([])
     const [isSubmitting, setIsSubmitting] = useState(false)
-    const [hasExistingSubmission, setHasExistingSubmission] = useState(false) // TODO: Check real status
+    const hasExistingSubmission = false // TODO: Check real status
 
     const onDrop = useCallback((acceptedFiles: File[]) => {
         const selectedFile = acceptedFiles[0]

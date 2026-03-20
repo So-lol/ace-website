@@ -112,7 +112,7 @@ export interface AuditLogDoc {
     actorEmail?: string
     details: string
     timestamp: Timestamp
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
 }
 
 // aceApplications/{id}

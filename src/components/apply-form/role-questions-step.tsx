@@ -10,11 +10,11 @@ import {
     SelectValue,
 } from '@/components/ui/select'
 import { Users, MessageCircle } from 'lucide-react'
-import { FormData, ACTIVITIES } from './types'
+import { FormData, ACTIVITIES, FormUpdater } from './types'
 
 interface RoleQuestionsStepProps {
     formData: FormData
-    update: (field: keyof FormData, value: any) => void
+    update: FormUpdater
     toggleActivity: (activity: string) => void
 }
 

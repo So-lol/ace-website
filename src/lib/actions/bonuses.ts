@@ -9,11 +9,9 @@ import { logAuditAction } from '@/lib/actions/audit'
 
 export async function getBonusActivities(activeOnly = false) {
     try {
-        let query = adminDb.collection('bonusActivities').orderBy('createdAt', 'desc')
-
-        if (activeOnly) {
-            query = query.where('isActive', '==', true) as any
-        }
+        const query = activeOnly
+            ? adminDb.collection('bonusActivities').where('isActive', '==', true).orderBy('createdAt', 'desc')
+            : adminDb.collection('bonusActivities').orderBy('createdAt', 'desc')
 
         const snapshot = await query.get()
         return snapshot.docs.map(doc => ({

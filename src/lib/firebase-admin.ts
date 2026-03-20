@@ -11,6 +11,23 @@ let authInstance: Auth | undefined
 let storageInstance: Storage | undefined
 let dbInstance: Firestore | undefined
 
+const isUsingEmulators =
+    process.env.FIREBASE_USE_EMULATORS === '1' ||
+    process.env.NEXT_PUBLIC_FIREBASE_USE_EMULATORS === '1'
+
+const emulatorProjectId =
+    process.env.FIREBASE_EMULATOR_PROJECT_ID ||
+    process.env.GCLOUD_PROJECT ||
+    process.env.FIREBASE_ADMIN_PROJECT_ID ||
+    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
+    'demo-ace-website'
+
+function createLazyProxy<T extends object>(getInstance: () => T): T {
+    return new Proxy({} as T, {
+        get: (_target, prop, receiver) => Reflect.get(getInstance(), prop, receiver),
+    })
+}
+
 function ensureInitialized() {
     if (app) return
 
@@ -19,6 +36,12 @@ function ensureInitialized() {
     if (apps.length > 0) {
         app = apps[0]
     } else {
+        if (isUsingEmulators) {
+            app = initializeApp({
+                projectId: emulatorProjectId,
+                storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || `${emulatorProjectId}.appspot.com`,
+            })
+        } else {
         const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID
         const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL
         const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, '\n')
@@ -41,6 +64,7 @@ function ensureInitialized() {
             }),
             storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
         })
+        }
     }
 
     authInstance = getAuth(app)
@@ -49,25 +73,28 @@ function ensureInitialized() {
 }
 
 // Export Proxies to allow lazy initialization (prevents build crashes on import)
-export const adminAuth = new Proxy({} as Auth, {
-    get: (_target, prop) => {
-        ensureInitialized()
-        return (authInstance as any)[prop]
+export const adminAuth = createLazyProxy(() => {
+    ensureInitialized()
+    if (!authInstance) {
+        throw new Error('Firebase Auth failed to initialize')
     }
+    return authInstance
 })
 
-export const adminStorage = new Proxy({} as Storage, {
-    get: (_target, prop) => {
-        ensureInitialized()
-        return (storageInstance as any)[prop]
+export const adminStorage = createLazyProxy(() => {
+    ensureInitialized()
+    if (!storageInstance) {
+        throw new Error('Firebase Storage failed to initialize')
     }
+    return storageInstance
 })
 
-export const adminDb = new Proxy({} as Firestore, {
-    get: (_target, prop) => {
-        ensureInitialized()
-        return (dbInstance as any)[prop]
+export const adminDb = createLazyProxy(() => {
+    ensureInitialized()
+    if (!dbInstance) {
+        throw new Error('Firestore failed to initialize')
     }
+    return dbInstance
 })
 
 /**
@@ -77,7 +104,7 @@ export async function verifyIdToken(idToken: string) {
     try {
         const decodedToken = await adminAuth.verifyIdToken(idToken)
         return { user: decodedToken, error: null }
-    } catch (error: any) {
+    } catch (error: unknown) {
         // Strict check: We want to know if it's expired
         return { user: null, error }
     }
@@ -115,7 +142,7 @@ export async function getUserByEmail(email: string) {
     try {
         const user = await adminAuth.getUserByEmail(email)
         return user
-    } catch (error) {
+    } catch {
         return null
     }
 }

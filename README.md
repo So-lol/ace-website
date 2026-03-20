@@ -1,36 +1,69 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ACE Website
 
-## Getting Started
+Next.js 16 application for the ACE program, using Firebase Authentication, Firestore, and Firebase Storage.
 
-First, run the development server:
+## Local development
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Start the app:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+For end-to-end auth testing against local Firebase emulators:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run emulators:start
+npm run dev:emulators
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Environment setup
 
-## Learn More
+Copy `.env.example` to `.env.local` and fill in the Firebase web-app and Admin SDK credentials.
 
-To learn more about Next.js, take a look at the following resources:
+## Verification commands
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Repo quality gate:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm run lint
+npx tsc --noEmit
+npm run test:unit
+npx playwright test tests/auth.spec.ts tests/security-auth.spec.ts tests/auth-emulator.spec.ts
+```
 
-## Deploy on Vercel
+Real Firebase project validation:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm run validate:firebase:project
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+This validates Firebase Admin connectivity plus password-reset, email-verification, and verify-and-change-email action-link generation against the configured real project when validation emails are provided.
+
+Production or staging auth smoke test:
+
+```bash
+PLAYWRIGHT_BASE_URL=https://your-deployed-app.example.com \
+SMOKE_TEST_EMAIL=smoke-test-user@example.com \
+SMOKE_TEST_PASSWORD='your-test-password' \
+npm run test:smoke
+```
+
+Use a dedicated low-privilege test account. The smoke test verifies:
+
+- public routes still render
+- protected routes redirect to login when logged out
+- login succeeds
+- session cookie is issued and survives reload/navigation
+- logout succeeds and protected routes are blocked again
+
+Detailed checklist:
+
+- `docs/firebase-production-validation.md`
+- `docs/auth-monitoring.md`

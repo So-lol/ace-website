@@ -57,6 +57,8 @@ export type FormData = {
     selfIntro: string
 }
 
+export type FormUpdater = <K extends keyof FormData>(field: K, value: FormData[K]) => void
+
 export const initialFormData: FormData = {
     name: '',
     pronouns: '',

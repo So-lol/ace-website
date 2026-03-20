@@ -1,8 +1,7 @@
 import { Metadata } from 'next'
 import Link from 'next/link'
-import Image from 'next/image'
 import { NavbarWithAuthClient, Footer } from '@/components/layout'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -11,7 +10,6 @@ import {
     Clock,
     CheckCircle2,
     XCircle,
-    Eye,
     Calendar,
     Trophy
 } from 'lucide-react'

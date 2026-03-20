@@ -10,9 +10,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Cat, ArrowLeft, Loader2, Mail, Lock, CheckCircle2 } from 'lucide-react'
 import { sendPasswordResetEmail, confirmPasswordReset, verifyPasswordResetCode } from 'firebase/auth'
-import { auth } from '@/lib/firebase'
+import { auth, isFirebaseClientConfigured } from '@/lib/firebase'
 import { preparePasswordReset } from '@/lib/actions/auth'
+import { reportClientAuthFailure } from '@/lib/actions/auth-observability'
 import { toast } from 'sonner'
+import { getAuthActionCodeSettings, normalizeEmail } from '@/lib/auth-utils'
+import { FirebaseError } from 'firebase/app'
 
 export default function ForgotPasswordPage() {
     const router = useRouter()
@@ -29,11 +32,25 @@ export default function ForgotPasswordPage() {
     useEffect(() => {
         if (oobCode) {
             const verifyCode = async () => {
+                if (!auth || !isFirebaseClientConfigured) {
+                    toast.error('Firebase Authentication is not configured for this environment.')
+                    setIsVerifying(false)
+                    return
+                }
+
                 try {
                     const userEmail = await verifyPasswordResetCode(auth, oobCode)
                     setEmail(userEmail)
                     setIsValidCode(true)
                 } catch (err) {
+                    const authError = err as FirebaseError
+                    void reportClientAuthFailure({
+                        type: 'action_code_failure',
+                        route: '/forgot-password',
+                        errorCode: authError.code || 'auth/invalid-action-code',
+                        errorMessage: authError.message || 'Password reset action code verification failed.',
+                        metadata: { mode: 'resetPassword' },
+                    })
                     console.error('Invalid reset code:', err)
                     toast.error('This password reset link is invalid or has expired.')
                 } finally {
@@ -49,35 +66,52 @@ export default function ForgotPasswordPage() {
         e.preventDefault()
         setIsLoading(true)
         const formData = new FormData(e.currentTarget)
-        const email = ((formData.get('email') as string) || '').trim().toLowerCase()
+        const email = normalizeEmail((formData.get('email') as string) || '')
+
+        if (!auth || !isFirebaseClientConfigured) {
+            toast.error('Firebase Authentication is not configured for this environment.')
+            setIsLoading(false)
+            return
+        }
 
         try {
             const preparation = await preparePasswordReset(email)
 
             if (!preparation.success) {
-                if (!preparation.accountExists) {
-                    toast.error('No account found with this email.')
-                } else {
-                    toast.error(preparation.error || 'Failed to send reset email. Please try again.')
-                }
+                await reportClientAuthFailure({
+                    type: 'password_reset_request_failure',
+                    route: '/forgot-password',
+                    email,
+                    errorCode: 'server/password-reset-preparation',
+                    errorMessage: preparation.error || 'Password reset preparation failed before sending email.',
+                })
+                toast.error(preparation.error || 'Failed to process password reset. Please try again.')
                 return
             }
 
-            // We want to handle the reset in-app using our custom forgot-password page
-            // The link in the email will go to /auth/action which redirects to /forgot-password?oobCode=...
-            await sendPasswordResetEmail(auth, email, {
-                url: `${window.location.origin}/auth/action`,
-            })
-            toast.success('Password reset email sent!')
+            if (preparation.shouldSendEmail) {
+                const actionCodeSettings = getAuthActionCodeSettings(window.location.origin)
+                if (!actionCodeSettings) {
+                    throw new Error('Password reset is not configured for this environment.')
+                }
+
+                await sendPasswordResetEmail(auth, email, actionCodeSettings)
+            }
+
+            toast.success('If an account exists for that email, a password reset link has been sent.')
             // Optional: stay on page with success message
             setIsResetComplete(true)
-        } catch (err: any) {
+        } catch (err: unknown) {
+            const authError = err as FirebaseError
+            await reportClientAuthFailure({
+                type: 'password_reset_request_failure',
+                route: '/forgot-password',
+                email,
+                errorCode: authError.code || 'auth/unknown',
+                errorMessage: authError.message || 'Password reset email send failed.',
+            })
             console.error(err)
-            if (err.code === 'auth/user-not-found') {
-                toast.error('No account found with this email.')
-            } else {
-                toast.error('Failed to send reset email. Please try again.')
-            }
+            toast.error('Failed to process password reset. Please try again.')
         } finally {
             setIsLoading(false)
         }
@@ -87,6 +121,11 @@ export default function ForgotPasswordPage() {
     async function handleConfirmReset(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault()
         if (!oobCode) return
+
+        if (!auth || !isFirebaseClientConfigured) {
+            toast.error('Firebase Authentication is not configured for this environment.')
+            return
+        }
 
         setIsLoading(true)
         const formData = new FormData(e.currentTarget)
@@ -106,9 +145,17 @@ export default function ForgotPasswordPage() {
             setTimeout(() => {
                 router.push('/login?message=password-reset-success')
             }, 3000)
-        } catch (err: any) {
+        } catch (err: unknown) {
+            const authError = err as FirebaseError
+            await reportClientAuthFailure({
+                type: 'password_reset_confirm_failure',
+                route: '/forgot-password',
+                email,
+                errorCode: authError.code || 'auth/unknown',
+                errorMessage: authError.message || 'Password reset confirmation failed.',
+            })
             console.error('Error resetting password:', err)
-            if (err.code === 'auth/weak-password') {
+            if (authError.code === 'auth/weak-password') {
                 toast.error('Password is too weak.')
             } else {
                 toast.error('Failed to reset password. The link may have expired.')

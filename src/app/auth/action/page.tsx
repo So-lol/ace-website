@@ -7,11 +7,13 @@ import { Navbar, Footer } from '@/components/layout'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Cat, CheckCircle2, XCircle, Loader2, AlertCircle } from 'lucide-react'
-import { auth } from '@/lib/firebase'
+import { auth, isFirebaseClientConfigured } from '@/lib/firebase'
+import { reportClientAuthFailure } from '@/lib/actions/auth-observability'
 import { applyActionCode, checkActionCode } from 'firebase/auth'
 import { toast } from 'sonner'
+import { FirebaseError } from 'firebase/app'
 
-type ActionMode = 'verifyEmail' | 'resetPassword' | 'recoverEmail' | null
+type ActionMode = 'verifyEmail' | 'verifyAndChangeEmail' | 'resetPassword' | 'recoverEmail' | null
 type ActionState = 'loading' | 'success' | 'error' | 'invalid'
 
 export default function AuthActionPage() {
@@ -32,8 +34,27 @@ export default function AuthActionPage() {
             const oobCode = searchParams.get('oobCode')
 
             if (!oobCode || !actionMode) {
+                await reportClientAuthFailure({
+                    type: 'action_code_failure',
+                    route: '/auth/action',
+                    errorCode: 'auth/missing-action-code',
+                    errorMessage: 'Auth action route was loaded without a valid mode or OOB code.',
+                })
                 setState('invalid')
                 setErrorMessage('Invalid or missing verification code.')
+                return
+            }
+
+            if (!auth || !isFirebaseClientConfigured) {
+                await reportClientAuthFailure({
+                    type: 'action_code_failure',
+                    route: '/auth/action',
+                    errorCode: 'firebase/not-configured',
+                    errorMessage: 'Auth action route was loaded without Firebase client configuration.',
+                    metadata: { mode: actionMode },
+                })
+                setState('error')
+                setErrorMessage('Firebase Authentication is not configured for this environment.')
                 return
             }
 
@@ -46,13 +67,18 @@ export default function AuthActionPage() {
                 // Apply the action based on mode
                 switch (actionMode) {
                     case 'verifyEmail':
+                    case 'verifyAndChangeEmail':
                         await applyActionCode(auth, oobCode)
                         setState('success')
-                        toast.success('Email verified successfully!')
+                        toast.success(actionMode === 'verifyEmail'
+                            ? 'Email verified successfully!'
+                            : 'Email change verified successfully!')
 
                         // Redirect to login after 3 seconds
                         setTimeout(() => {
-                            router.push('/login?message=email-verified')
+                            router.push(actionMode === 'verifyEmail'
+                                ? '/login?message=email-verified'
+                                : '/login?message=email-change-verified')
                         }, 3000)
                         break
 
@@ -74,18 +100,26 @@ export default function AuthActionPage() {
                         setState('invalid')
                         setErrorMessage('Unknown action type.')
                 }
-            } catch (error: any) {
+            } catch (error: unknown) {
+                const authError = error as FirebaseError
+                await reportClientAuthFailure({
+                    type: 'action_code_failure',
+                    route: '/auth/action',
+                    errorCode: authError.code || 'auth/unknown',
+                    errorMessage: authError.message || 'Auth action code application failed.',
+                    metadata: { mode: actionMode || 'unknown' },
+                })
                 console.error('Error applying action code:', error)
                 setState('error')
 
                 // Provide specific error messages
-                if (error.code === 'auth/expired-action-code') {
+                if (authError.code === 'auth/expired-action-code') {
                     setErrorMessage('This verification link has expired. Please request a new one.')
-                } else if (error.code === 'auth/invalid-action-code') {
+                } else if (authError.code === 'auth/invalid-action-code') {
                     setErrorMessage('This verification link is invalid or has already been used.')
-                } else if (error.code === 'auth/user-disabled') {
+                } else if (authError.code === 'auth/user-disabled') {
                     setErrorMessage('This account has been disabled.')
-                } else if (error.code === 'auth/user-not-found') {
+                } else if (authError.code === 'auth/user-not-found') {
                     setErrorMessage('No account found with this email.')
                 } else {
                     setErrorMessage('An error occurred while verifying your email. Please try again.')
@@ -100,6 +134,7 @@ export default function AuthActionPage() {
         if (state === 'loading') return 'Verifying...'
         if (state === 'success') {
             if (mode === 'verifyEmail') return 'Email Verified!'
+            if (mode === 'verifyAndChangeEmail') return 'Email Change Verified!'
             if (mode === 'recoverEmail') return 'Email Recovered!'
             return 'Success!'
         }
@@ -111,6 +146,7 @@ export default function AuthActionPage() {
         if (state === 'loading') return 'Please wait while we verify your email...'
         if (state === 'success') {
             if (mode === 'verifyEmail') return 'Your email has been verified successfully. Redirecting to login...'
+            if (mode === 'verifyAndChangeEmail') return 'Your new email address has been verified successfully. Redirecting to login...'
             if (mode === 'recoverEmail') return 'Your email has been recovered. Redirecting to login...'
             return 'Action completed successfully.'
         }
@@ -192,7 +228,7 @@ export default function AuthActionPage() {
                                 </div>
                             )}
 
-                            {state === 'success' && mode === 'verifyEmail' && (
+                            {state === 'success' && (mode === 'verifyEmail' || mode === 'verifyAndChangeEmail') && (
                                 <div className="text-sm text-muted-foreground">
                                     Redirecting in 3 seconds...
                                 </div>
@@ -206,4 +242,3 @@ export default function AuthActionPage() {
         </div>
     )
 }
-

@@ -3,20 +3,45 @@
 import { adminDb, deleteFile } from '@/lib/firebase-admin'
 import { requireAdmin } from '@/lib/auth-helpers'
 import { revalidatePath } from 'next/cache'
-import { FieldValue, Timestamp } from 'firebase-admin/firestore'
-import { SubmissionDoc } from '@/types/firestore'
+import { FieldValue } from 'firebase-admin/firestore'
+import { SubmissionDoc, SubmissionStatus } from '@/types/firestore'
 
 type MediaFilter = 'all' | 'active' | 'archived'
 
-export async function getMediaLibrary(filter: MediaFilter = 'all') {
+export interface MediaLibraryItem {
+    id: string
+    imageUrl: string
+    imagePath: string
+    status: SubmissionStatus
+    submitterId: string
+    submitterName: string
+    weekNumber: number
+    year: number
+    totalPoints: number
+    isArchived: boolean
+    createdAt: Date
+    archivedAt: Date | null
+    daysSinceCreated: number
+    daysSinceArchived: number | null
+    eligibleForDeletion: boolean
+}
+
+export interface MediaLibraryStats {
+    total: number
+    active: number
+    archived: number
+    eligibleForDeletion: number
+}
+
+export async function getMediaLibrary(filter: MediaFilter = 'all'): Promise<MediaLibraryItem[]> {
     try {
         await requireAdmin()
 
-        let query = adminDb.collection('submissions').orderBy('createdAt', 'desc')
+        const query = adminDb.collection('submissions').orderBy('createdAt', 'desc')
 
         const snapshot = await query.get()
 
-        const media = await Promise.all(snapshot.docs.map(async (doc) => {
+        const media: Array<MediaLibraryItem | null> = await Promise.all(snapshot.docs.map(async (doc) => {
             const data = doc.data() as SubmissionDoc
 
             // Apply filter
@@ -25,7 +50,9 @@ export async function getMediaLibrary(filter: MediaFilter = 'all') {
 
             // Fetch submitter name
             const submitterSnap = await adminDb.collection('users').doc(data.submitterId).get()
-            const submitterName = submitterSnap.exists ? submitterSnap.data()?.name : 'Unknown'
+            const submitterName = submitterSnap.exists
+                ? String(submitterSnap.data()?.name || 'Unknown')
+                : 'Unknown'
 
             // Calculate retention status
             const createdDate = data.createdAt?.toDate() || new Date()
@@ -55,7 +82,7 @@ export async function getMediaLibrary(filter: MediaFilter = 'all') {
             }
         }))
 
-        return media.filter(Boolean)
+        return media.filter((item): item is MediaLibraryItem => item !== null)
     } catch (error) {
         console.error('Error fetching media library:', error)
         return []
@@ -194,7 +221,7 @@ export async function deleteArchivedMedia(submissionId: string) {
     }
 }
 
-export async function getMediaStats() {
+export async function getMediaStats(): Promise<MediaLibraryStats> {
     try {
         await requireAdmin()
 

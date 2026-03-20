@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import Image from 'next/image'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -99,7 +100,7 @@ export default function MediaList({ media, stats }: MediaListProps) {
             } else {
                 toast.error(result.error || 'Failed to archive')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         } finally {
             setIsLoading(null)
@@ -116,7 +117,7 @@ export default function MediaList({ media, stats }: MediaListProps) {
             } else {
                 toast.error(result.error || 'Failed to restore')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         } finally {
             setIsLoading(null)
@@ -135,7 +136,7 @@ export default function MediaList({ media, stats }: MediaListProps) {
             } else {
                 toast.error(result.error || 'Failed to delete')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         } finally {
             setIsLoading(null)
@@ -231,10 +232,12 @@ export default function MediaList({ media, stats }: MediaListProps) {
                                 className="aspect-video relative bg-muted cursor-pointer overflow-hidden"
                                 onClick={() => setSelectedImage(item)}
                             >
-                                <img
+                                <Image
                                     src={item.imageUrl}
                                     alt={`Submission by ${item.submitterName}`}
-                                    className="w-full h-full object-cover hover:scale-105 transition-transform"
+                                    fill
+                                    unoptimized
+                                    className="object-cover hover:scale-105 transition-transform"
                                 />
                                 {item.isArchived && (
                                     <div className="absolute top-2 right-2">
@@ -330,9 +333,12 @@ export default function MediaList({ media, stats }: MediaListProps) {
                                 </DialogDescription>
                             </DialogHeader>
                             <div className="aspect-video bg-muted rounded-lg overflow-hidden">
-                                <img
+                                <Image
                                     src={selectedImage.imageUrl}
                                     alt="Submission"
+                                    width={1200}
+                                    height={900}
+                                    unoptimized
                                     className="w-full h-full object-contain"
                                 />
                             </div>

@@ -17,7 +17,6 @@ import {
     Plus,
     Search,
     MoreHorizontal,
-    Megaphone,
     Pencil,
     Eye,
     EyeOff,
@@ -27,7 +26,6 @@ import {
     Calendar,
     Loader2,
     Clock,
-    FileText
 } from 'lucide-react'
 import {
     DropdownMenu,
@@ -57,10 +55,9 @@ import { Switch } from '@/components/ui/switch'
 import { AnnouncementDoc } from '@/types/firestore'
 import { createAnnouncement, updateAnnouncement, deleteAnnouncement } from '@/lib/actions/announcements'
 import { toast } from 'sonner'
-import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 
-interface ClientAnnouncement extends Omit<AnnouncementDoc, 'createdAt' | 'updatedAt' | 'publishedAt'> {
+export interface ClientAnnouncement extends Omit<AnnouncementDoc, 'createdAt' | 'updatedAt' | 'publishedAt'> {
     createdAt: Date
     updatedAt: Date
     publishedAt: Date | null
@@ -82,8 +79,8 @@ function formatDate(date: Date | null) {
 }
 
 function toLocalISOString(date: Date) {
-    const tzOffset = date.getTimezoneOffset() * 60000;
-    return (new Date(date.getTime() - tzOffset)).toISOString().slice(0, 16);
+    const tzOffset = date.getTimezoneOffset() * 60000
+    return new Date(date.getTime() - tzOffset).toISOString().slice(0, 16)
 }
 
 export default function AnnouncementList({ announcements }: AnnouncementListProps) {
@@ -177,7 +174,7 @@ export default function AnnouncementList({ announcements }: AnnouncementListProp
             } else {
                 toast.error(result.error || 'Failed to create')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         } finally {
             setIsLoading(false)
@@ -198,50 +195,26 @@ export default function AnnouncementList({ announcements }: AnnouncementListProp
 
         setIsLoading(true)
         try {
-            const result = await updateAnnouncement(editingAnnouncement.id, {
+            const updatePayload: Parameters<typeof updateAnnouncement>[1] = {
                 title,
                 content,
                 isPublished,
                 isPinned,
-                publishedAt: isPublished && scheduledDate ? new Date(scheduledDate) : (isPublished ? null : undefined)
-                // Logic: 
-                // if Published + Date => Scheduled Update
-                // if Published + No Date => Keep existing Date (Handled by server if undefined) or Set Now?
-                // Actually server updateAnnouncement handles: "If data.publishedAt undefined, and was !published, set Now".
-                // If I clear scheduled date I might want "Now".
-                // Simplest: pass explicit date if set.
-            })
-
-            // Re-refining logic:
-            // If User sets Date -> Send Date.
-            // If User clears Date -> Send null? No, Server handles null as unpublish IF isPublished=false.
-            // If isPublished=true and Date is empty -> User means "Publish Now / Keep Published".
-            // We pass date only if present.
-
-            const updatePayload: any = {
-                title,
-                content,
-                isPublished,
-                isPinned
             }
             if (scheduledDate) {
                 updatePayload.publishedAt = new Date(scheduledDate)
             }
-            // If clearing schedule to publish immediately, how to signal?
-            // If we send isPublished=true, and no publishedAt, server keeps existing or sets Now.
-            // If existing was future, and we want Now... server won't override unless forced.
-            // But we can't easily force "Now" if we rely on "undefined = keep".
-            // Solution: If scheduledDate is cleared but IS Published, send new Date() to force update?
-            // No, user might just edit text.
-            // Let's rely on server for now. If user wants to "Unschedule" to "Now", they can pick today's date or we add a "Publish Now" button.
-            // Current form: If date cleared, we don't send it.
 
-            await updateAnnouncement(editingAnnouncement.id, updatePayload)
+            const result = await updateAnnouncement(editingAnnouncement.id, updatePayload)
+            if (!result.success) {
+                toast.error(result.error || 'Failed to update')
+                return
+            }
 
             toast.success('Announcement updated')
             setIsEditOpen(false)
             resetForm()
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         } finally {
             setIsLoading(false)
@@ -256,7 +229,7 @@ export default function AnnouncementList({ announcements }: AnnouncementListProp
             } else {
                 toast.error('Failed to update status')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         }
     }
@@ -269,7 +242,7 @@ export default function AnnouncementList({ announcements }: AnnouncementListProp
             } else {
                 toast.error('Failed to update status')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         }
     }
@@ -283,12 +256,12 @@ export default function AnnouncementList({ announcements }: AnnouncementListProp
             } else {
                 toast.error('Failed to delete')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         }
     }
 
-    const AnnouncementTable = ({ items, type }: { items: ClientAnnouncement[], type: 'published' | 'scheduled' | 'draft' }) => (
+    const AnnouncementTable = ({ items, type }: { items: ClientAnnouncement[]; type: 'published' | 'scheduled' | 'draft' }) => (
         <Table>
             <TableHeader>
                 <TableRow>

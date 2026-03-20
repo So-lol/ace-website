@@ -16,7 +16,7 @@ import {
     Clock,
     CheckCircle2,
     AlertCircle,
-    Image
+    Image as ImageIcon
 } from 'lucide-react'
 import { getAdminStats } from '@/lib/actions/stats'
 import { getSubmissions } from '@/lib/actions/submissions'
@@ -226,7 +226,7 @@ export default async function AdminDashboardPage() {
                                 </Link>
                                 <Link href="/admin/media">
                                     <Button variant="outline" className="w-full h-auto py-4 flex-col gap-2">
-                                        <Image className="w-5 h-5" />
+                                        <ImageIcon className="w-5 h-5" />
                                         <span className="text-xs">Media Management</span>
                                     </Button>
                                 </Link>

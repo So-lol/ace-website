@@ -74,7 +74,7 @@ export default function AddUserForm({ families }: AddUserFormProps) {
             } else {
                 toast.error(result.error || 'Failed to create user')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         } finally {
             setIsLoading(false)
@@ -137,7 +137,7 @@ export default function AddUserForm({ families }: AddUserFormProps) {
 
                         <div className="space-y-2">
                             <Label>Role</Label>
-                            <Select value={role} onValueChange={(v: any) => setRole(v)}>
+                            <Select value={role} onValueChange={(value: 'ADMIN' | 'MENTOR' | 'MENTEE') => setRole(value)}>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Select role" />
                                 </SelectTrigger>

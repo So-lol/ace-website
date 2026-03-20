@@ -4,6 +4,8 @@ import { adminAuth, adminDb, getUserByEmail } from '@/lib/firebase-admin'
 import { requireAdmin } from '@/lib/auth-helpers'
 import { Timestamp } from 'firebase-admin/firestore'
 import { UserDoc } from '@/types/firestore'
+import { UserRole } from '@/types/enums'
+import { getErrorMessage } from '@/lib/errors'
 
 export type ImportStats = {
     total: number
@@ -12,11 +14,40 @@ export type ImportStats = {
     errors: string[]
 }
 
+export type ImportCsvRow = Record<string, string | undefined>
+
+type ImportUserRow = ImportCsvRow & {
+    email?: string
+    name?: string
+    role?: string
+    family_id?: string
+}
+
+type ImportPairingRow = ImportCsvRow & {
+    mentor_email?: string
+    mentee1_email?: string
+    mentee2_email?: string
+    family_id?: string
+}
+
+const USER_ROLES: UserRole[] = ['ADMIN', 'MENTOR', 'MENTEE']
+
+function parseUserRole(role: string | undefined): UserRole | null {
+    if (!role) {
+        return null
+    }
+
+    const normalizedRole = role.trim().toUpperCase()
+    return USER_ROLES.includes(normalizedRole as UserRole)
+        ? (normalizedRole as UserRole)
+        : null
+}
+
 /**
  * Bulk import users from CSV data
  */
-export async function importUsers(users: any[]): Promise<ImportStats> {
-    const admin = await requireAdmin()
+export async function importUsers(users: ImportUserRow[]): Promise<ImportStats> {
+    await requireAdmin()
     const stats: ImportStats = { total: users.length, success: 0, failed: 0, errors: [] }
 
     const batch = adminDb.batch()
@@ -31,6 +62,13 @@ export async function importUsers(users: any[]): Promise<ImportStats> {
             }
 
             const email = data.email.toLowerCase()
+            const role = parseUserRole(data.role)
+            if (!role) {
+                stats.failed++
+                stats.errors.push(`Invalid role for ${email}: ${data.role}`)
+                continue
+            }
+
             const existingAuthUser = await getUserByEmail(email)
             const authUser = existingAuthUser || await adminAuth.createUser({
                 email,
@@ -51,7 +89,7 @@ export async function importUsers(users: any[]): Promise<ImportStats> {
                 uid: authUser.uid,
                 email,
                 name: data.name,
-                role: data.role.toUpperCase() as any,
+                role,
                 familyId: data.family_id || null,
                 avatarUrl: null,
                 createdAt: Timestamp.now(),
@@ -61,9 +99,9 @@ export async function importUsers(users: any[]): Promise<ImportStats> {
             batch.set(userRef, userData, { merge: true })
             stats.success++
             usersCreated.push(authUser.uid)
-        } catch (err: any) {
+        } catch (error: unknown) {
             stats.failed++
-            stats.errors.push(`Error importing ${data.email}: ${err.message}`)
+            stats.errors.push(`Error importing ${data.email}: ${getErrorMessage(error)}`)
         }
     }
 
@@ -77,7 +115,7 @@ export async function importUsers(users: any[]): Promise<ImportStats> {
 /**
  * Bulk import pairings from CSV data
  */
-export async function importPairings(pairings: any[]): Promise<ImportStats> {
+export async function importPairings(pairings: ImportPairingRow[]): Promise<ImportStats> {
     await requireAdmin()
     const stats: ImportStats = { total: pairings.length, success: 0, failed: 0, errors: [] }
 
@@ -101,7 +139,9 @@ export async function importPairings(pairings: any[]): Promise<ImportStats> {
             const mentorId = mentorSnap.docs[0].id
 
             // 2. Find mentees
-            const menteeEmails = [data.mentee1_email, data.mentee2_email].filter(Boolean).map(e => e.toLowerCase())
+            const menteeEmails = [data.mentee1_email, data.mentee2_email]
+                .filter((email): email is string => Boolean(email))
+                .map(email => email.toLowerCase())
             const menteeIds: string[] = []
 
             for (const email of menteeEmails) {
@@ -145,9 +185,9 @@ export async function importPairings(pairings: any[]): Promise<ImportStats> {
             }
 
             stats.success++
-        } catch (err: any) {
+        } catch (error: unknown) {
             stats.failed++
-            stats.errors.push(`Error processing pairing for ${data.mentor_email}: ${err.message}`)
+            stats.errors.push(`Error processing pairing for ${data.mentor_email}: ${getErrorMessage(error)}`)
         }
     }
 

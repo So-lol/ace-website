@@ -1,11 +1,11 @@
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { ClipboardList } from 'lucide-react'
-import { FormData } from './types'
+import { FormData, FormUpdater } from './types'
 
 interface FinalStepProps {
     formData: FormData
-    update: (field: keyof FormData, value: any) => void
+    update: FormUpdater
 }
 
 export function FinalStep({ formData, update }: FinalStepProps) {

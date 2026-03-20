@@ -1,6 +1,9 @@
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { verifyIdToken, adminDb, verifySessionCookie } from '@/lib/firebase-admin'
+import { adminDb } from '@/lib/firebase-admin'
+import { recordAuthEvent } from '@/lib/auth-observability'
+import { serializeAuthError } from '@/lib/auth-observability-utils'
+import { verifyCanonicalSessionCookie } from '@/lib/server-auth'
 
 // Define User Interface matching Firestore schema
 export interface AuthenticatedUser {
@@ -21,12 +24,47 @@ export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> 
     try {
         // 1. Verify Session/Token
         // Use session cookie verification
-        const { user: firebaseAuthUser, error } = await verifySessionCookie(sessionCookie)
-        if (error || !firebaseAuthUser) return null
+        const { user: firebaseAuthUser, error } = await verifyCanonicalSessionCookie(sessionCookie)
+        if (error || !firebaseAuthUser) {
+            const authError = serializeAuthError(error)
+            await recordAuthEvent({
+                type: 'session_verification_failure',
+                surface: 'server',
+                route: 'session-cookie',
+                errorCode: authError.errorCode,
+                errorMessage: authError.errorMessage || 'Session cookie verification failed.',
+            })
+            cookieStore.delete('firebase-session')
+            return null
+        }
+
+        if (firebaseAuthUser.disabled) {
+            await recordAuthEvent({
+                type: 'session_verification_failure',
+                surface: 'server',
+                route: 'session-cookie',
+                uid: firebaseAuthUser.uid,
+                email: firebaseAuthUser.email || null,
+                errorCode: 'auth/user-disabled',
+                errorMessage: 'Disabled user presented a valid session cookie.',
+            })
+            cookieStore.delete('firebase-session')
+            return null
+        }
 
         // Extra safety check: ensure email is verified
-        if (!firebaseAuthUser.email_verified) {
+        if (!firebaseAuthUser.emailVerified) {
             console.warn(`User ${firebaseAuthUser.uid} has active session but email not verified.`)
+            await recordAuthEvent({
+                type: 'session_verification_failure',
+                surface: 'server',
+                route: 'session-cookie',
+                uid: firebaseAuthUser.uid,
+                email: firebaseAuthUser.email || null,
+                errorCode: 'auth/email-not-verified',
+                errorMessage: 'Unverified user presented a valid session cookie.',
+            })
+            cookieStore.delete('firebase-session')
             return null
         }
 
@@ -35,8 +73,16 @@ export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> 
 
         if (!userDoc.exists) {
             console.warn(`User ${firebaseAuthUser.uid} authenticated but no Firestore doc found.`)
-            // Fallback: If verifying simple auth (no role required), could return basic info
-            // But usually we want the DB profile.
+            await recordAuthEvent({
+                type: 'session_verification_failure',
+                surface: 'server',
+                route: 'session-cookie',
+                uid: firebaseAuthUser.uid,
+                email: firebaseAuthUser.email || null,
+                errorCode: 'firestore/user-doc-missing',
+                errorMessage: 'Authenticated user did not have a matching Firestore user document.',
+            })
+            cookieStore.delete('firebase-session')
             return null
         }
 
@@ -52,6 +98,15 @@ export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> 
         }
     } catch (err) {
         console.error('Auth helper error:', err)
+        const authError = serializeAuthError(err)
+        await recordAuthEvent({
+            type: 'session_verification_failure',
+            surface: 'server',
+            route: 'session-cookie',
+            errorCode: authError.errorCode,
+            errorMessage: authError.errorMessage || 'Unexpected error while resolving authenticated user.',
+        })
+        cookieStore.delete('firebase-session')
         return null
     }
 }
@@ -67,7 +122,7 @@ export async function requireAuth(): Promise<AuthenticatedUser> {
 export async function requireAdmin(): Promise<AuthenticatedUser> {
     const user = await requireAuth()
     if (user.role !== 'ADMIN') {
-        throw new Error('Forbidden: Admin access required')
+        redirect('/dashboard')
     }
     return user
 }

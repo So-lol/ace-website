@@ -1,11 +1,37 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
-import { getAuthenticatedUser, requireAdmin } from '@/lib/auth-helpers'
+import { requireAdmin } from '@/lib/auth-helpers'
 import { revalidatePath } from 'next/cache'
-import { FieldValue, Timestamp } from 'firebase-admin/firestore'
-import { AuditLogDoc } from '@/types/firestore'
+import { FieldValue } from 'firebase-admin/firestore'
 import { logAuditAction } from '@/lib/actions/audit'
+
+export interface PointsAuditEntry {
+    id: string
+    action: string
+    targetType: string
+    targetId: string
+    actorId: string
+    actorEmail?: string
+    details: string
+    metadata?: {
+        previousPoints: number
+        adjustment: number
+        newPoints: number
+        actorName?: string
+    }
+    timestamp: Date
+}
+
+export interface PointsAdminPairing {
+    id: string
+    mentorId: string
+    mentorName: string
+    familyId: string
+    familyName: string
+    totalPoints: number
+    weeklyPoints: number
+}
 
 interface AdjustPointsInput {
     pairingId: string
@@ -82,7 +108,7 @@ export async function adjustPairingPoints(input: AdjustPointsInput) {
     }
 }
 
-export async function getPointsHistory(pairingId?: string, limit: number = 50) {
+export async function getPointsHistory(pairingId?: string, limit = 50): Promise<PointsAuditEntry[]> {
     try {
         await requireAdmin()
 
@@ -103,9 +129,21 @@ export async function getPointsHistory(pairingId?: string, limit: number = 50) {
 
         return snapshot.docs.map(doc => {
             const data = doc.data()
+            const rawMetadata = data.metadata as Record<string, unknown> | undefined
             return {
                 id: doc.id,
-                ...data,
+                action: String(data.action || ''),
+                targetType: String(data.targetType || ''),
+                targetId: String(data.targetId || ''),
+                actorId: String(data.actorId || ''),
+                actorEmail: typeof data.actorEmail === 'string' ? data.actorEmail : undefined,
+                details: String(data.details || ''),
+                metadata: rawMetadata ? {
+                    previousPoints: Number(rawMetadata.previousPoints || 0),
+                    adjustment: Number(rawMetadata.adjustment || 0),
+                    newPoints: Number(rawMetadata.newPoints || 0),
+                    actorName: typeof rawMetadata.actorName === 'string' ? rawMetadata.actorName : undefined,
+                } : undefined,
                 timestamp: data.timestamp?.toDate?.() || new Date()
             }
         })
@@ -115,7 +153,7 @@ export async function getPointsHistory(pairingId?: string, limit: number = 50) {
     }
 }
 
-export async function getPairingsForPointsAdmin() {
+export async function getPairingsForPointsAdmin(): Promise<PointsAdminPairing[]> {
     try {
         await requireAdmin()
 

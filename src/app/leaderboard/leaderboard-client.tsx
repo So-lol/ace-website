@@ -4,20 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Trophy, Users, Medal, Crown, Award } from 'lucide-react'
-import { FamilyDoc } from '@/types/firestore'
-
-interface LeaderboardFamily {
-    id: string
-    name: string
-    totalPoints?: number
-    memberCount?: number
-    memberIds?: string[]
-    rank?: number
-}
+import { FamilyLeaderboardEntry, PairingLeaderboardEntry } from '@/lib/actions/leaderboard'
 
 interface LeaderboardClientProps {
-    families: LeaderboardFamily[]
-    pairings: any[]
+    families: FamilyLeaderboardEntry[]
+    pairings: PairingLeaderboardEntry[]
 }
 
 function getRankIcon(rank: number) {
@@ -100,7 +91,7 @@ export default function LeaderboardClient({ families, pairings }: LeaderboardCli
                                         <div className="flex-1">
                                             <h3 className="font-semibold text-lg">{family.name}</h3>
                                             <p className="text-sm text-muted-foreground">
-                                                {family.memberCount ?? (family.memberIds?.length || 0)} members
+                                                {family.memberCount} members
                                             </p>
                                         </div>
                                         <div className="text-right">

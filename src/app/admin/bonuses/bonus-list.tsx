@@ -46,14 +46,12 @@ import { Textarea } from '@/components/ui/textarea'
 import { BonusActivityDoc } from '@/types/firestore'
 import { createBonusActivity, updateBonusActivity, deleteBonusActivity } from '@/lib/actions/bonuses'
 import { toast } from 'sonner'
-import { useRouter } from 'next/navigation'
 
 interface BonusListProps {
     bonuses: BonusActivityDoc[]
 }
 
 export default function BonusList({ bonuses }: BonusListProps) {
-    const router = useRouter()
     const [isCreateOpen, setIsCreateOpen] = useState(false)
     const [isEditOpen, setIsEditOpen] = useState(false)
     const [isLoading, setIsLoading] = useState(false)
@@ -99,7 +97,7 @@ export default function BonusList({ bonuses }: BonusListProps) {
             } else {
                 toast.error(result.error || 'Failed to create')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         } finally {
             setIsLoading(false)
@@ -119,7 +117,7 @@ export default function BonusList({ bonuses }: BonusListProps) {
             } else {
                 toast.error(result.error || 'Failed to update')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         } finally {
             setIsLoading(false)
@@ -134,7 +132,7 @@ export default function BonusList({ bonuses }: BonusListProps) {
             } else {
                 toast.error('Failed to update status')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         }
     }
@@ -148,7 +146,7 @@ export default function BonusList({ bonuses }: BonusListProps) {
             } else {
                 toast.error('Failed to delete')
             }
-        } catch (error) {
+        } catch {
             toast.error('An error occurred')
         }
     }
