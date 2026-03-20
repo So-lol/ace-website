@@ -68,7 +68,9 @@ export async function getUserStats(userId: string) {
             .get()
 
         const submissions = submissionsSnap.docs.map(doc => doc.data())
-        const totalPoints = submissions.reduce((acc, sub) => acc + (sub.totalPoints || 0), 0)
+        const totalPoints = submissions
+            .filter(sub => sub.status === 'APPROVED')
+            .reduce((acc, sub) => acc + (sub.totalPoints || 0), 0)
         const totalSubmissions = submissions.length
 
         // Calculate weeks submitted count (unique weeks)

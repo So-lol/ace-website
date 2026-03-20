@@ -73,6 +73,13 @@ export async function adjustPairingPoints(input: AdjustPointsInput) {
             updatedAt: FieldValue.serverTimestamp()
         })
 
+        if (pairingData?.familyId) {
+            await adminDb.collection('families').doc(pairingData.familyId).update({
+                totalPoints: FieldValue.increment(input.amount),
+                updatedAt: FieldValue.serverTimestamp()
+            })
+        }
+
         // Create audit log entry
         // Create audit log entry using shared action
         await logAuditAction(

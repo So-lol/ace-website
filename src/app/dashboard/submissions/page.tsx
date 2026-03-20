@@ -1,8 +1,9 @@
 import { Metadata } from 'next'
+import Image from 'next/image'
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { NavbarWithAuthClient, Footer } from '@/components/layout'
 import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
     ArrowLeft,
@@ -13,71 +14,13 @@ import {
     Calendar,
     Trophy
 } from 'lucide-react'
+import { getAuthenticatedUser } from '@/lib/auth-helpers'
+import { getUserSubmissions } from '@/lib/actions/submissions'
 
 export const metadata: Metadata = {
     title: 'My Submissions',
     description: 'View your submission history',
 }
-
-// Mock data
-const submissions = [
-    {
-        id: '1',
-        weekNumber: 4,
-        year: 2026,
-        status: 'APPROVED',
-        basePoints: 10,
-        bonusPoints: 5,
-        totalPoints: 15,
-        imageUrl: '/placeholder-photo.jpg',
-        bonuses: ['Study Session Together'],
-        submittedAt: '2026-01-22T14:30:00',
-        reviewedAt: '2026-01-23T10:15:00',
-        reviewReason: null
-    },
-    {
-        id: '2',
-        weekNumber: 3,
-        year: 2026,
-        status: 'APPROVED',
-        basePoints: 10,
-        bonusPoints: 0,
-        totalPoints: 10,
-        imageUrl: '/placeholder-photo.jpg',
-        bonuses: [],
-        submittedAt: '2026-01-15T18:45:00',
-        reviewedAt: '2026-01-16T09:00:00',
-        reviewReason: null
-    },
-    {
-        id: '3',
-        weekNumber: 2,
-        year: 2026,
-        status: 'APPROVED',
-        basePoints: 10,
-        bonusPoints: 5,
-        totalPoints: 15,
-        imageUrl: '/placeholder-photo.jpg',
-        bonuses: ['Coffee Date'],
-        submittedAt: '2026-01-08T16:20:00',
-        reviewedAt: '2026-01-09T11:30:00',
-        reviewReason: null
-    },
-    {
-        id: '4',
-        weekNumber: 1,
-        year: 2026,
-        status: 'REJECTED',
-        basePoints: 0,
-        bonusPoints: 0,
-        totalPoints: 0,
-        imageUrl: '/placeholder-photo.jpg',
-        bonuses: [],
-        submittedAt: '2026-01-02T20:00:00',
-        reviewedAt: '2026-01-03T14:00:00',
-        reviewReason: 'Photo does not clearly show both members of the pairing. Please ensure all pairing members are visible in future submissions.'
-    },
-]
 
 function getStatusBadge(status: string) {
     switch (status) {
@@ -106,8 +49,8 @@ function getStatusBadge(status: string) {
     }
 }
 
-function formatDate(dateString: string) {
-    return new Date(dateString).toLocaleDateString('en-US', {
+function formatDate(date: Date) {
+    return new Date(date).toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',
         year: 'numeric',
@@ -116,9 +59,16 @@ function formatDate(dateString: string) {
     })
 }
 
-export default function SubmissionsPage() {
-    const totalPoints = submissions.reduce((sum, s) => sum + s.totalPoints, 0)
-    const approvedCount = submissions.filter(s => s.status === 'APPROVED').length
+export default async function SubmissionsPage() {
+    const user = await getAuthenticatedUser()
+
+    if (!user) {
+        redirect('/login')
+    }
+
+    const submissions = await getUserSubmissions(user.id)
+    const totalPoints = submissions.reduce((sum, submission) => sum + submission.totalPoints, 0)
+    const approvedCount = submissions.filter(submission => submission.status === 'APPROVED').length
 
     return (
         <div className="min-h-screen flex flex-col">
@@ -126,7 +76,6 @@ export default function SubmissionsPage() {
 
             <main className="flex-1 py-8">
                 <div className="container mx-auto px-4 max-w-4xl">
-                    {/* Back Link */}
                     <Link
                         href="/dashboard"
                         className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground mb-6"
@@ -135,7 +84,6 @@ export default function SubmissionsPage() {
                         Back to Dashboard
                     </Link>
 
-                    {/* Header */}
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
                         <div>
                             <h1 className="text-3xl font-bold mb-1">My Submissions</h1>
@@ -165,26 +113,39 @@ export default function SubmissionsPage() {
                         </div>
                     </div>
 
-                    {/* Submissions List */}
                     <div className="space-y-4">
-                        {submissions.map((submission) => (
+                        {submissions.length === 0 ? (
+                            <Card>
+                                <CardContent className="py-10 text-center text-muted-foreground">
+                                    No submissions yet.
+                                </CardContent>
+                            </Card>
+                        ) : submissions.map((submission) => (
                             <Card key={submission.id} className="overflow-hidden">
                                 <div className="flex flex-col sm:flex-row">
-                                    {/* Image Thumbnail */}
-                                    <div className="sm:w-48 h-32 sm:h-auto bg-muted flex items-center justify-center shrink-0">
-                                        <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                                            <FileText className="w-8 h-8" />
-                                        </div>
+                                    <div className="sm:w-48 h-32 sm:h-auto bg-muted flex items-center justify-center shrink-0 relative">
+                                        {submission.imageUrl ? (
+                                            <Image
+                                                src={submission.imageUrl}
+                                                alt={`Week ${submission.weekNumber} submission`}
+                                                fill
+                                                unoptimized
+                                                className="object-cover"
+                                            />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                                                <FileText className="w-8 h-8" />
+                                            </div>
+                                        )}
                                     </div>
 
-                                    {/* Content */}
                                     <div className="flex-1 p-4">
                                         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3">
                                             <div>
                                                 <h3 className="font-semibold text-lg">Week {submission.weekNumber}</h3>
                                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                                     <Calendar className="w-4 h-4" />
-                                                    Submitted {formatDate(submission.submittedAt)}
+                                                    Submitted {formatDate(submission.createdAt)}
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">
@@ -197,19 +158,17 @@ export default function SubmissionsPage() {
                                             </div>
                                         </div>
 
-                                        {/* Bonuses */}
                                         {submission.bonuses.length > 0 && (
                                             <div className="mb-3">
                                                 <span className="text-sm text-muted-foreground">Bonuses: </span>
-                                                {submission.bonuses.map((bonus, i) => (
-                                                    <Badge key={i} variant="outline" className="mr-1 text-xs">
+                                                {submission.bonuses.map((bonus, index) => (
+                                                    <Badge key={`${submission.id}-${index}`} variant="outline" className="mr-1 text-xs">
                                                         {bonus}
                                                     </Badge>
                                                 ))}
                                             </div>
                                         )}
 
-                                        {/* Points Breakdown */}
                                         {submission.status === 'APPROVED' && (
                                             <div className="text-sm text-muted-foreground mb-3">
                                                 Base: {submission.basePoints} pts
@@ -219,11 +178,16 @@ export default function SubmissionsPage() {
                                             </div>
                                         )}
 
-                                        {/* Rejection Reason */}
                                         {submission.status === 'REJECTED' && submission.reviewReason && (
-                                            <div className="p-3 bg-destructive/10 rounded-lg border border-destructive/20 text-sm">
-                                                <span className="font-medium text-destructive">Reason: </span>
-                                                <span className="text-muted-foreground">{submission.reviewReason}</span>
+                                            <div className="p-3 bg-destructive/10 rounded-lg">
+                                                <p className="text-sm font-medium text-destructive mb-1">Rejection Reason</p>
+                                                <p className="text-sm text-muted-foreground">{submission.reviewReason}</p>
+                                            </div>
+                                        )}
+
+                                        {submission.reviewedAt && (
+                                            <div className="text-xs text-muted-foreground mt-3">
+                                                Reviewed {formatDate(submission.reviewedAt)}
                                             </div>
                                         )}
                                     </div>
@@ -231,23 +195,6 @@ export default function SubmissionsPage() {
                             </Card>
                         ))}
                     </div>
-
-                    {submissions.length === 0 && (
-                        <Card className="text-center py-12">
-                            <CardContent>
-                                <FileText className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                                <h3 className="font-semibold mb-2">No Submissions Yet</h3>
-                                <p className="text-muted-foreground mb-4">
-                                    You haven&apos;t submitted any photos yet.
-                                </p>
-                                <Link href="/dashboard/submit">
-                                    <Button className="doraemon-gradient text-white">
-                                        Submit Your First Photo
-                                    </Button>
-                                </Link>
-                            </CardContent>
-                        </Card>
-                    )}
                 </div>
             </main>
 

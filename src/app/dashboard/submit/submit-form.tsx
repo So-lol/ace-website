@@ -26,9 +26,10 @@ interface SubmitFormProps {
     bonusActivities: BonusActivity[]
     weekNumber: number
     year: number
+    existingSubmissionStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | null
 }
 
-export default function SubmitForm({ bonusActivities, weekNumber, year }: SubmitFormProps) {
+export default function SubmitForm({ bonusActivities, weekNumber, year, existingSubmissionStatus }: SubmitFormProps) {
     // deadline calculation (next Sunday) could be added here or passed in
     // For now, simple text
     const deadline = "Sunday 11:59 PM"
@@ -44,7 +45,7 @@ export default function SubmitForm({ bonusActivities, weekNumber, year }: Submit
     const [preview, setPreview] = useState<string | null>(null)
     const [selectedBonuses, setSelectedBonuses] = useState<string[]>([])
     const [isSubmitting, setIsSubmitting] = useState(false)
-    const hasExistingSubmission = false // TODO: Check real status
+    const hasExistingSubmission = existingSubmissionStatus !== null
 
     const onDrop = useCallback((acceptedFiles: File[]) => {
         const selectedFile = acceptedFiles[0]
@@ -90,9 +91,11 @@ export default function SubmitForm({ bonusActivities, weekNumber, year }: Submit
         setIsSubmitting(true)
 
         try {
-            // Step 1: Upload image to Supabase Storage
+            const normalizedFile = await normalizeImageFile(file)
+
+            // Step 1: Upload image to Firebase Storage
             const uploadFormData = new FormData()
-            uploadFormData.append('file', file)
+            uploadFormData.append('file', normalizedFile)
 
             const uploadResult = await uploadSubmissionImage(uploadFormData)
             if (!uploadResult.success || !uploadResult.imageUrl || !uploadResult.imagePath) {
@@ -150,7 +153,7 @@ export default function SubmitForm({ bonusActivities, weekNumber, year }: Submit
                             <h2 className="text-xl font-bold mb-2">Already Submitted</h2>
                             <p className="text-muted-foreground mb-6">
                                 You&apos;ve already submitted a photo for Week {currentWeek.weekNumber}.
-                                Only one submission per week is allowed.
+                                Status: {existingSubmissionStatus?.toLowerCase()}. Only one submission per week is allowed.
                             </p>
                             <Link href="/dashboard/submissions">
                                 <Button className="gap-2">
@@ -358,4 +361,48 @@ export default function SubmitForm({ bonusActivities, weekNumber, year }: Submit
             <Footer />
         </div>
     )
+}
+
+async function normalizeImageFile(file: File): Promise<File> {
+    if (typeof window === 'undefined') {
+        return file
+    }
+
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+        return file
+    }
+
+    const imageBitmap = await createImageBitmap(file)
+    const maxDimension = 1600
+    const scale = Math.min(1, maxDimension / Math.max(imageBitmap.width, imageBitmap.height))
+    const width = Math.max(1, Math.round(imageBitmap.width * scale))
+    const height = Math.max(1, Math.round(imageBitmap.height * scale))
+    const canvas = document.createElement('canvas')
+
+    canvas.width = width
+    canvas.height = height
+
+    const context = canvas.getContext('2d')
+    if (!context) {
+        imageBitmap.close()
+        return file
+    }
+
+    context.drawImage(imageBitmap, 0, 0, width, height)
+    imageBitmap.close()
+
+    const compressedBlob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob((blob) => resolve(blob), 'image/webp', 0.82)
+    })
+
+    if (!compressedBlob || compressedBlob.size >= file.size) {
+        return file
+    }
+
+    const normalizedName = file.name.replace(/\.[^.]+$/, '') || 'submission'
+
+    return new File([compressedBlob], `${normalizedName}.webp`, {
+        type: 'image/webp',
+        lastModified: Date.now(),
+    })
 }

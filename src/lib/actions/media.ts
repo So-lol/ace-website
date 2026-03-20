@@ -1,10 +1,11 @@
 'use server'
 
-import { adminDb, deleteFile } from '@/lib/firebase-admin'
+import { adminDb, deleteFile, getFileReadUrl } from '@/lib/firebase-admin'
 import { requireAdmin } from '@/lib/auth-helpers'
 import { revalidatePath } from 'next/cache'
 import { FieldValue } from 'firebase-admin/firestore'
 import { SubmissionDoc, SubmissionStatus } from '@/types/firestore'
+import { logAuditAction } from '@/lib/actions/audit'
 
 type MediaFilter = 'all' | 'active' | 'archived'
 
@@ -82,7 +83,12 @@ export async function getMediaLibrary(filter: MediaFilter = 'all'): Promise<Medi
             }
         }))
 
-        return media.filter((item): item is MediaLibraryItem => item !== null)
+        const filteredMedia = media.filter((item): item is MediaLibraryItem => item !== null)
+
+        return await Promise.all(filteredMedia.map(async (item) => ({
+            ...item,
+            imageUrl: await getFileReadUrl(item.imagePath),
+        })))
     } catch (error) {
         console.error('Error fetching media library:', error)
         return []
@@ -107,15 +113,15 @@ export async function archiveMedia(submissionId: string, reason?: string) {
         })
 
         // Audit log
-        await adminDb.collection('auditLogs').add({
-            action: 'MEDIA_ARCHIVED',
-            targetType: 'submission',
-            targetId: submissionId,
-            actorId: user.id,
-            details: reason || 'Media archived by admin',
-            timestamp: FieldValue.serverTimestamp(),
-            metadata: { actorName: user.name }
-        })
+        await logAuditAction(
+            user.id,
+            'MEDIA_ARCHIVED',
+            'SUBMISSION',
+            submissionId,
+            reason || 'Media archived by admin',
+            { actorName: user.name },
+            user.email
+        )
 
         revalidatePath('/admin/media')
         return { success: true }
@@ -143,15 +149,15 @@ export async function restoreMedia(submissionId: string) {
         })
 
         // Audit log
-        await adminDb.collection('auditLogs').add({
-            action: 'MEDIA_RESTORED',
-            targetType: 'submission',
-            targetId: submissionId,
-            actorId: user.id,
-            details: 'Media restored from archive',
-            timestamp: FieldValue.serverTimestamp(),
-            metadata: { actorName: user.name }
-        })
+        await logAuditAction(
+            user.id,
+            'MEDIA_RESTORED',
+            'SUBMISSION',
+            submissionId,
+            'Media restored from archive',
+            { actorName: user.name },
+            user.email
+        )
 
         revalidatePath('/admin/media')
         return { success: true }
@@ -200,18 +206,18 @@ export async function deleteArchivedMedia(submissionId: string) {
         await submissionRef.delete()
 
         // Audit log
-        await adminDb.collection('auditLogs').add({
-            action: 'MEDIA_DELETED',
-            targetType: 'submission',
-            targetId: submissionId,
-            actorId: user.id,
-            details: 'Media permanently deleted after retention period',
-            timestamp: FieldValue.serverTimestamp(),
-            metadata: {
+        await logAuditAction(
+            user.id,
+            'MEDIA_DELETED',
+            'SUBMISSION',
+            submissionId,
+            'Media permanently deleted after retention period',
+            {
                 actorName: user.name,
                 deletedImagePath: data.imagePath
-            }
-        })
+            },
+            user.email
+        )
 
         revalidatePath('/admin/media')
         return { success: true }
