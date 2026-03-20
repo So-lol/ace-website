@@ -255,7 +255,7 @@ export default async function DashboardPage() {
                                                     <div>
                                                         <div className="font-medium text-sm">Week {submission.weekNumber}</div>
                                                         <div className="text-xs text-muted-foreground">
-                                                            {submission.createdAt ? new Date(submission.createdAt.toDate()).toLocaleDateString() : 'N/A'}
+                                                            {submission.createdAt ? new Date(submission.createdAt).toLocaleDateString() : 'N/A'}
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-2">
