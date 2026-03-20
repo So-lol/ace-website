@@ -67,3 +67,4 @@ Detailed checklist:
 
 - `docs/firebase-production-validation.md`
 - `docs/auth-monitoring.md`
+- `docs/website-product-requirements.md`

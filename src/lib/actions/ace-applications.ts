@@ -1,7 +1,7 @@
 'use server'
 
 import { adminDb } from '@/lib/firebase-admin'
-import { requireAdmin, getAuthenticatedUser } from '@/lib/auth-helpers'
+import { requireAdmin, getAuthenticatedUser, type AuthenticatedUser } from '@/lib/auth-helpers'
 import { AceApplicationDoc } from '@/types/firestore'
 import { AceApplication, AceRole } from '@/types/index'
 import { Timestamp } from 'firebase-admin/firestore'
@@ -56,12 +56,73 @@ interface SubmitAceApplicationInput {
     selfIntro: string
 }
 
+export interface CurrentAceApplicationStatus {
+    hasApplied: boolean
+    application: {
+        id: string
+        applicantId?: string
+        role: AceRole
+        createdAtIso: string
+    } | null
+}
+
+async function findExistingApplicationForUser(user: AuthenticatedUser): Promise<AceApplicationDoc | null> {
+    const applicationByUid = await adminDb
+        .collection(COLLECTION)
+        .where('applicantId', '==', user.id)
+        .limit(1)
+        .get()
+
+    if (!applicationByUid.empty) {
+        return applicationByUid.docs[0].data() as AceApplicationDoc
+    }
+
+    const applicationByEmail = await adminDb
+        .collection(COLLECTION)
+        .where('email', '==', user.email.trim().toLowerCase())
+        .limit(1)
+        .get()
+
+    if (!applicationByEmail.empty) {
+        return applicationByEmail.docs[0].data() as AceApplicationDoc
+    }
+
+    return null
+}
+
+export async function getCurrentAceApplicationStatus(): Promise<CurrentAceApplicationStatus> {
+    const authUser = await getAuthenticatedUser()
+    if (!authUser) {
+        return { hasApplied: false, application: null }
+    }
+
+    const existingApplication = await findExistingApplicationForUser(authUser)
+    if (!existingApplication) {
+        return { hasApplied: false, application: null }
+    }
+
+    return {
+        hasApplied: true,
+        application: {
+            id: existingApplication.id,
+            applicantId: existingApplication.applicantId,
+            role: existingApplication.role,
+            createdAtIso: existingApplication.createdAt.toDate().toISOString(),
+        },
+    }
+}
+
 export async function submitAceApplication(input: SubmitAceApplicationInput) {
     try {
         // Verify the user is authenticated
         const authUser = await getAuthenticatedUser()
         if (!authUser) {
             return { success: false, error: 'You must be signed in to submit an application.' }
+        }
+
+        const existingApplication = await findExistingApplicationForUser(authUser)
+        if (existingApplication) {
+            return { success: false, error: 'You have already applied to the ACE program.' }
         }
 
         // Basic validation
@@ -74,6 +135,7 @@ export async function submitAceApplication(input: SubmitAceApplicationInput) {
 
         const doc: AceApplicationDoc = {
             id: docRef.id,
+            applicantId: authUser.id,
             // Contact
             name: input.name.trim(),
             pronouns: input.pronouns.trim(),

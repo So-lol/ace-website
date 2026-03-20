@@ -120,6 +120,7 @@ export type AceRole = 'FAMILY_HEAD' | 'ANH' | 'CHI' | 'CHANH' | 'EM'
 
 export interface AceApplicationDoc {
     id: string
+    applicantId?: string
 
     // Contact Info
     name: string

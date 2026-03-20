@@ -2,22 +2,31 @@
 
 import { adminDb } from '@/lib/firebase-admin'
 import { BonusActivityDoc } from '@/types/firestore'
+import { BonusActivity } from '@/types'
 import { Timestamp } from 'firebase-admin/firestore'
 import { revalidatePath } from 'next/cache'
 import { requireAdmin } from '@/lib/auth-helpers'
 import { logAuditAction } from '@/lib/actions/audit'
 
-export async function getBonusActivities(activeOnly = false) {
+export async function getBonusActivities(activeOnly = false): Promise<BonusActivity[]> {
     try {
         const query = activeOnly
             ? adminDb.collection('bonusActivities').where('isActive', '==', true).orderBy('createdAt', 'desc')
             : adminDb.collection('bonusActivities').orderBy('createdAt', 'desc')
 
         const snapshot = await query.get()
-        return snapshot.docs.map(doc => ({
+        return snapshot.docs.map(doc => {
+            const data = doc.data() as BonusActivityDoc
+            return {
             id: doc.id,
-            ...doc.data()
-        })) as BonusActivityDoc[]
+            name: data.name,
+            description: data.description,
+            points: data.points,
+            isActive: data.isActive,
+            createdAt: data.createdAt.toDate(),
+            updatedAt: data.updatedAt.toDate(),
+        }
+        })
     } catch (error) {
         console.error('Error fetching bonus activities:', error)
         return []

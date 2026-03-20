@@ -96,6 +96,7 @@ export type AceRole = 'FAMILY_HEAD' | 'ANH' | 'CHI' | 'CHANH' | 'EM'
 
 export interface AceApplication {
     id: string
+    applicantId?: string
     name: string
     pronouns: string
     email: string

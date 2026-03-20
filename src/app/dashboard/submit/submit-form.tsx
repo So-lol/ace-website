@@ -20,10 +20,10 @@ import {
 } from 'lucide-react'
 import { uploadSubmissionImage, createSubmission, deleteUploadedImage } from '@/lib/actions/submissions'
 import { toast } from 'sonner'
-import { BonusActivityDoc } from '@/types/firestore'
+import { BonusActivity } from '@/types'
 
 interface SubmitFormProps {
-    bonusActivities: BonusActivityDoc[]
+    bonusActivities: BonusActivity[]
     weekNumber: number
     year: number
 }

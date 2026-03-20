@@ -43,19 +43,19 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { BonusActivityDoc } from '@/types/firestore'
+import { BonusActivity } from '@/types'
 import { createBonusActivity, updateBonusActivity, deleteBonusActivity } from '@/lib/actions/bonuses'
 import { toast } from 'sonner'
 
 interface BonusListProps {
-    bonuses: BonusActivityDoc[]
+    bonuses: BonusActivity[]
 }
 
 export default function BonusList({ bonuses }: BonusListProps) {
     const [isCreateOpen, setIsCreateOpen] = useState(false)
     const [isEditOpen, setIsEditOpen] = useState(false)
     const [isLoading, setIsLoading] = useState(false)
-    const [editingBonus, setEditingBonus] = useState<BonusActivityDoc | null>(null)
+    const [editingBonus, setEditingBonus] = useState<BonusActivity | null>(null)
     const [searchTerm, setSearchTerm] = useState('')
 
     // Form states
@@ -77,7 +77,7 @@ export default function BonusList({ bonuses }: BonusListProps) {
         setEditingBonus(null)
     }
 
-    const openEdit = (bonus: BonusActivityDoc) => {
+    const openEdit = (bonus: BonusActivity) => {
         setEditingBonus(bonus)
         setName(bonus.name)
         setDescription(bonus.description)
@@ -124,7 +124,7 @@ export default function BonusList({ bonuses }: BonusListProps) {
         }
     }
 
-    const toggleStatus = async (bonus: BonusActivityDoc) => {
+    const toggleStatus = async (bonus: BonusActivity) => {
         try {
             const result = await updateBonusActivity(bonus.id, { isActive: !bonus.isActive })
             if (result.success) {
@@ -338,7 +338,7 @@ export default function BonusList({ bonuses }: BonusListProps) {
                                             </Badge>
                                         </TableCell>
                                         <TableCell className="text-center">
-                                            {new Date(activity.createdAt.toDate()).toLocaleDateString()}
+                                            {activity.createdAt.toLocaleDateString()}
                                         </TableCell>
                                         <TableCell className="text-center">
                                             {activity.isActive ? (
