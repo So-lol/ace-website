@@ -1,9 +1,9 @@
 'use server'
 
 import { getAuthenticatedUser, requireAdmin } from '@/lib/auth-helpers'
-import { uploadFile, deleteFile, adminDb } from '@/lib/firebase-admin'
+import { uploadFile, deleteFile, adminDb, getFileReadUrl } from '@/lib/firebase-admin'
 import { revalidatePath } from 'next/cache'
-import { Timestamp, FieldValue } from 'firebase-admin/firestore'
+import { Timestamp, FieldValue, FieldPath } from 'firebase-admin/firestore'
 import { SubmissionDoc, PairingDoc, SubmissionStatus } from '@/types/firestore'
 import { getErrorMessage } from '@/lib/errors'
 
@@ -62,6 +62,21 @@ export interface AdminSubmissionListItem {
     }>
 }
 
+export interface UserSubmissionListItem {
+    id: string
+    weekNumber: number
+    year: number
+    status: SubmissionStatus
+    basePoints: number
+    bonusPoints: number
+    totalPoints: number
+    imageUrl: string
+    createdAt: Date
+    reviewedAt: Date | null
+    reviewReason?: string
+    bonuses: string[]
+}
+
 /**
  * Upload a file to Firebase Storage
  */
@@ -99,7 +114,10 @@ export async function uploadSubmissionImage(formData: FormData): Promise<UploadR
     const buffer = Buffer.from(arrayBuffer)
 
     // Upload to Firebase Storage
-    const result = await uploadFile(buffer, fileName, file.type)
+    const result = await uploadFile(buffer, fileName, file.type, {
+        originalFileName: file.name,
+        uploadedBy: user.id,
+    })
 
     if (!result) {
         return { success: false, error: 'Failed to upload image. Please try again.' }
@@ -115,7 +133,7 @@ export async function uploadSubmissionImage(formData: FormData): Promise<UploadR
 /**
  * Get a user's submission history
  */
-export async function getUserSubmissions(userId: string) {
+export async function getUserSubmissions(userId: string): Promise<UserSubmissionListItem[]> {
     try {
         // Secure IDOR
         const user = await getAuthenticatedUser()
@@ -131,10 +149,39 @@ export async function getUserSubmissions(userId: string) {
             .orderBy('createdAt', 'desc')
             .get()
 
-        return snapshot.docs.map(doc => ({
+        const submissions = snapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
-        })) as unknown as SubmissionDoc[]
+        })) as Array<SubmissionDoc & { id: string }>
+
+        const bonusIds = Array.from(new Set(submissions.flatMap(submission => submission.bonusActivityIds || [])))
+        const bonusNameMap = new Map<string, string>()
+
+        if (bonusIds.length > 0) {
+            const bonusRefs = bonusIds.map(id => adminDb.collection('bonusActivities').doc(id))
+            const bonusSnapshots = await adminDb.getAll(...bonusRefs)
+
+            bonusSnapshots.forEach((bonusSnapshot) => {
+                if (bonusSnapshot.exists) {
+                    bonusNameMap.set(bonusSnapshot.id, String(bonusSnapshot.data()?.name || 'Bonus'))
+                }
+            })
+        }
+
+        return await Promise.all(submissions.map(async (submission) => ({
+            id: submission.id,
+            weekNumber: submission.weekNumber,
+            year: submission.year,
+            status: submission.status,
+            basePoints: submission.basePoints,
+            bonusPoints: submission.bonusPoints,
+            totalPoints: submission.totalPoints,
+            imageUrl: await getFileReadUrl(submission.imagePath),
+            createdAt: submission.createdAt?.toDate?.() || new Date(),
+            reviewedAt: submission.reviewedAt?.toDate?.() || null,
+            reviewReason: submission.reviewReason,
+            bonuses: (submission.bonusActivityIds || []).map(id => bonusNameMap.get(id) || 'Bonus'),
+        })))
     } catch (error) {
         console.error('Error fetching user submissions:', error)
         return []
@@ -145,7 +192,7 @@ export async function getUserSubmissions(userId: string) {
  * Create a submission record after successful upload
  */
 export async function createSubmission(
-    imageUrl: string,
+    _imageUrl: string,
     imagePath: string,
     weekNumber: number,
     year: number,
@@ -175,23 +222,46 @@ export async function createSubmission(
         const pairingDoc = snapshot.docs[0]
         const pairingId = pairingDoc.id
 
+        const existingSubmissionSnapshot = await adminDb.collection('submissions')
+            .where('pairingId', '==', pairingId)
+            .where('weekNumber', '==', weekNumber)
+            .where('year', '==', year)
+            .limit(1)
+            .get()
+
+        if (!existingSubmissionSnapshot.empty) {
+            return { success: false, error: 'Your pairing already has a submission for this week.' }
+        }
+
         // Calculate points
         const basePoints = 10
         let bonusPoints = 0
 
         if (bonusActivityIds.length > 0) {
-            // Fetch relevant bonus activities
-            // Firestore 'in' query supports up to 10 items.
-            // If > 10, batch or loop. Assuming < 10 for now.
+            const uniqueBonusIds = Array.from(new Set(bonusActivityIds))
+
+            if (uniqueBonusIds.length !== bonusActivityIds.length) {
+                return { success: false, error: 'Duplicate bonus selections are not allowed.' }
+            }
+
+            if (uniqueBonusIds.length > 10) {
+                return { success: false, error: 'Too many bonus activities selected.' }
+            }
+
             const bonusesSnap = await adminDb.collection('bonusActivities')
-                .where(process.env.FIRESTORE_DOC_ID_FIELD || '__name__', 'in', bonusActivityIds)
+                .where(FieldPath.documentId(), 'in', uniqueBonusIds)
                 .get()
+
+            if (bonusesSnap.size !== uniqueBonusIds.length) {
+                return { success: false, error: 'One or more selected bonus activities are invalid.' }
+            }
 
             bonusesSnap.forEach(doc => {
                 const data = doc.data()
-                if (data.isActive) {
-                    bonusPoints += (data.points || 0)
+                if (!data.isActive) {
+                    throw new Error('Selected bonus activities must be active.')
                 }
+                bonusPoints += (data.points || 0)
             })
         }
 
@@ -203,13 +273,13 @@ export async function createSubmission(
             submitterId: user.id,
             weekNumber,
             year,
-            imageUrl,
+            imageUrl: '',
             imagePath,
             status: 'PENDING',
             basePoints,
             bonusPoints,
             totalPoints,
-            bonusActivityIds, // Store IDs directly
+            bonusActivityIds: Array.from(new Set(bonusActivityIds)),
             createdAt: Timestamp.now(),
             updatedAt: Timestamp.now(),
         }
@@ -298,8 +368,22 @@ export async function approveSubmission(submissionId: string): Promise<Submissio
 
             // Update pairing points
             const pairingRef = adminDb.collection('pairings').doc(submissionData.pairingId)
+            const pairingSnap = await transaction.get(pairingRef)
+
+            if (!pairingSnap.exists) {
+                throw new Error('Pairing not found for submission')
+            }
+
+            const pairingData = pairingSnap.data() as PairingDoc
 
             transaction.update(pairingRef, {
+                weeklyPoints: FieldValue.increment(submissionData.totalPoints),
+                totalPoints: FieldValue.increment(submissionData.totalPoints),
+                updatedAt: Timestamp.now(),
+            })
+
+            const familyRef = adminDb.collection('families').doc(pairingData.familyId)
+            transaction.update(familyRef, {
                 weeklyPoints: FieldValue.increment(submissionData.totalPoints),
                 totalPoints: FieldValue.increment(submissionData.totalPoints),
                 updatedAt: Timestamp.now(),
@@ -319,7 +403,11 @@ export async function approveSubmission(submissionId: string): Promise<Submissio
             })
         })
 
+        revalidatePath('/admin')
         revalidatePath('/admin/submissions')
+        revalidatePath('/admin/media')
+        revalidatePath('/dashboard')
+        revalidatePath('/dashboard/submissions')
         revalidatePath('/leaderboard')
 
         return { success: true, submissionId }
@@ -385,7 +473,10 @@ export async function rejectSubmission(submissionId: string, reason: string): Pr
             })
         })
 
+        revalidatePath('/admin')
         revalidatePath('/admin/submissions')
+        revalidatePath('/dashboard')
+        revalidatePath('/dashboard/submissions')
 
         return { success: true, submissionId }
     } catch (error: unknown) {
@@ -532,7 +623,10 @@ export async function getSubmissions(status?: SubmissionStatus): Promise<AdminSu
             }
         })
 
-        return submissions
+        return await Promise.all(submissions.map(async (submission) => ({
+            ...submission,
+            imageUrl: await getFileReadUrl(submission.imagePath),
+        })))
     } catch (error) {
         console.error('Failed to fetch submissions:', error)
         return []

@@ -188,7 +188,8 @@ export async function deleteFirebaseUser(uid: string) {
 export async function uploadFile(
     buffer: Buffer,
     destination: string,
-    contentType: string
+    contentType: string,
+    metadata?: Record<string, string>
 ): Promise<{ url: string; path: string } | null> {
     try {
         const bucket = adminStorage.bucket()
@@ -196,19 +197,36 @@ export async function uploadFile(
 
         await file.save(buffer, {
             contentType,
-            public: true, // Make public
             metadata: {
                 contentType,
+                cacheControl: 'public, max-age=31536000, immutable',
+                ...metadata,
             }
         })
 
-        // Generate public URL
-        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${destination}`
-        return { url: publicUrl, path: destination }
+        const url = await getFileReadUrl(destination)
+        return { url, path: destination }
     } catch (error) {
         console.error('Error uploading file to Firebase Storage:', error)
         return null
     }
+}
+
+export async function getFileReadUrl(path: string, expiresInMs = 1000 * 60 * 60): Promise<string> {
+    const bucket = adminStorage.bucket()
+
+    if (isUsingEmulators) {
+        return `https://storage.googleapis.com/${bucket.name}/${path}`
+    }
+
+    const file = bucket.file(path)
+    const [signedUrl] = await file.getSignedUrl({
+        action: 'read',
+        expires: Date.now() + expiresInMs,
+        version: 'v4',
+    })
+
+    return signedUrl
 }
 
 /**

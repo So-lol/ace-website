@@ -28,6 +28,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { AdminSubmissionListItem, approveSubmission, rejectSubmission } from '@/lib/actions/submissions'
 import { toast } from 'sonner'
 import Image from 'next/image'
+import { useRouter } from 'next/navigation'
 
 interface SubmissionListProps {
     submissions: AdminSubmissionListItem[]
@@ -44,6 +45,7 @@ function formatDateTime(date: Date) {
 }
 
 export default function SubmissionList({ submissions }: SubmissionListProps) {
+    const router = useRouter()
     const [searchTerm, setSearchTerm] = useState('')
     const [rejectDialogOpen, setRejectDialogOpen] = useState(false)
     const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null)
@@ -69,6 +71,7 @@ export default function SubmissionList({ submissions }: SubmissionListProps) {
             const result = await approveSubmission(id)
             if (result.success) {
                 toast.success('Submission approved')
+                router.refresh()
             } else {
                 toast.error(result.error || 'Failed to approve')
             }
@@ -95,6 +98,7 @@ export default function SubmissionList({ submissions }: SubmissionListProps) {
             if (result.success) {
                 toast.success('Submission rejected')
                 setRejectDialogOpen(false)
+                router.refresh()
             } else {
                 toast.error(result.error || 'Failed to reject')
             }
@@ -123,6 +127,7 @@ export default function SubmissionList({ submissions }: SubmissionListProps) {
                             src={submission.imageUrl}
                             alt="Submission"
                             fill
+                            unoptimized
                             className="object-cover"
                         />
                     ) : (
