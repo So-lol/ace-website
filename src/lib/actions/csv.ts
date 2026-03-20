@@ -1,10 +1,13 @@
 'use server'
 
+import Papa from 'papaparse'
 import { requireAdmin } from '@/lib/auth-helpers'
 import { adminDb } from '@/lib/firebase-admin'
 import { revalidatePath } from 'next/cache'
-import { UserDoc } from '@/types/firestore'
-import { Timestamp } from 'firebase-admin/firestore'
+import { UserDoc, PairingDoc, SubmissionDoc } from '@/types/firestore'
+import { getFamilyLeaderboard, getPairingLeaderboard } from '@/lib/actions/leaderboard'
+import { commitUsersImport } from '@/lib/actions/admin'
+import { logAuditAction } from '@/lib/actions/audit'
 
 export type CSVImportResult = {
     success: boolean
@@ -12,6 +15,7 @@ export type CSVImportResult = {
     imported?: number
     skipped?: number
     errors?: string[]
+    errorReport?: string
 }
 
 export type CSVExportResult = {
@@ -20,146 +24,94 @@ export type CSVExportResult = {
     data?: string
 }
 
-/**
- * Parse CSV content into rows
- */
-function parseCSV(content: string): string[][] {
-    const lines = content.split('\n').filter(line => line.trim())
-    return lines.map(line => {
-        const values: string[] = []
-        let current = ''
-        let inQuotes = false
-
-        for (const char of line) {
-            if (char === '"') {
-                inQuotes = !inQuotes
-            } else if (char === ',' && !inQuotes) {
-                values.push(current.trim())
-                current = ''
-            } else {
-                current += char
-            }
-        }
-        values.push(current.trim())
-        return values
-    })
+export type CSVExportOptions = {
+    familyId?: string
+    seasonYear?: number
+    weekNumber?: number
 }
 
-/**
- * Import users from CSV (admin only)
- */
+function escapeCsvValue(value: unknown) {
+    const stringValue = String(value ?? '')
+    return `"${stringValue.replace(/"/g, '""')}"`
+}
+
+function formatCsvLine(values: unknown[]) {
+    return values.map(escapeCsvValue).join(',')
+}
+
+function parseCsvRows(content: string) {
+    const parsed = Papa.parse<Record<string, string>>(content, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: header => header.trim().toLowerCase(),
+    })
+
+    if (parsed.errors.length > 0) {
+        const details = parsed.errors.map(error => error.message).join('; ')
+        throw new Error(`Failed to parse CSV: ${details}`)
+    }
+
+    return parsed.data
+}
+
+function hasExportFilters(options?: CSVExportOptions) {
+    return Boolean(options?.familyId || options?.seasonYear || options?.weekNumber)
+}
+
+function describeExportFilters(options?: CSVExportOptions) {
+    if (!options || !hasExportFilters(options)) {
+        return 'no filters'
+    }
+
+    const parts = [
+        options.familyId ? `family=${options.familyId}` : null,
+        options.seasonYear ? `season=${options.seasonYear}` : null,
+        options.weekNumber ? `week=${options.weekNumber}` : null,
+    ].filter(Boolean)
+
+    return parts.join(', ')
+}
+
+async function logExport(
+    adminUser: Awaited<ReturnType<typeof requireAdmin>>,
+    targetType: string,
+    details: string,
+    options?: CSVExportOptions
+) {
+    await logAuditAction(
+        adminUser.id,
+        'EXPORT',
+        targetType,
+        'csv',
+        details,
+        options ? {
+            familyId: options.familyId || null,
+            seasonYear: options.seasonYear || null,
+            weekNumber: options.weekNumber || null,
+        } : undefined,
+        adminUser.email
+    )
+}
+
 export async function importUsersFromCSV(csvContent: string): Promise<CSVImportResult> {
     try {
         await requireAdmin()
-    } catch {
-        return { success: false, error: 'Only admins can import users' }
-    }
+        const rows = parseCsvRows(csvContent)
 
-    try {
-        const rows = parseCSV(csvContent)
-        if (rows.length < 2) {
-            return { success: false, error: 'CSV must have a header row and at least one data row' }
+        if (rows.length === 0) {
+            return { success: false, error: 'CSV must have at least one data row' }
         }
 
-        const header = rows[0].map(h => h.toLowerCase().trim())
-        const nameIdx = header.indexOf('name')
-        const emailIdx = header.indexOf('email')
-        const roleIdx = header.indexOf('role')
-
-        if (nameIdx === -1 || emailIdx === -1) {
-            return { success: false, error: 'CSV must have "name" and "email" columns' }
-        }
-
-        const dataRows = rows.slice(1)
-        let imported = 0
-        let skipped = 0
-        const errors: string[] = []
-
-        const batch = adminDb.batch()
-        let batchCount = 0
-
-        for (let i = 0; i < dataRows.length; i++) {
-            const row = dataRows[i]
-            const rowNum = i + 2
-
-            const name = row[nameIdx]?.trim()
-            const email = row[emailIdx]?.trim()?.toLowerCase()
-            const roleStr = row[roleIdx]?.trim()?.toUpperCase() || 'MENTEE'
-
-            if (!name || !email) {
-                errors.push(`Row ${rowNum}: Missing name or email`)
-                skipped++
-                continue
-            }
-
-            if (!email.includes('@')) {
-                errors.push(`Row ${rowNum}: Invalid email "${email}"`)
-                skipped++
-                continue
-            }
-
-            // Check if user exists (by email lookup)
-            const userQuery = await adminDb.collection('users').where('email', '==', email).limit(1).get()
-            if (!userQuery.empty) {
-                // Already exists, skip
-                skipped++
-                continue
-            }
-
-            // Create new user
-            // Note: We are creating a Firestore doc but NOT a Firebase Auth user here!
-            // This disconnect is tricky. Usually we want Auth users.
-            // But if we just store data for now, user can "Claim" it via sign up if logic supports it?
-            // Current signUp logic creates a NEW doc.
-            // Better strategy: Create Auth user here too?
-            // or just SKIP creating auth user and let them sign up, but then we have duplicate emails?
-            // We'll skip complex Auth creation for this CSV import MVP.
-            // We'll just create a placeholder doc with a random ID, but that WON'T match their UID when they sign up.
-
-            // FIXME: This logic is flawed for Firebase Auth integration.
-            // Without creating an Auth user, the UID won't match.
-            // We should use `adminAuth.createUser` here.
-
-            try {
-                // Use the exported adminAuth instance
-                const { adminAuth } = await import('@/lib/firebase-admin')
-
-                const userRecord = await adminAuth.createUser({
-                    email,
-                    displayName: name,
-                    emailVerified: false,
-                    // No password set - user must use "Forgot Password" or login link
-                })
-
-                const newUserRef = adminDb.collection('users').doc(userRecord.uid)
-                batch.set(newUserRef, {
-                    uid: userRecord.uid,
-                    name,
-                    email,
-                    role: roleStr,
-                    familyId: null,
-                    createdAt: Timestamp.now(),
-                    updatedAt: Timestamp.now(),
-                })
-                batchCount++
-                imported++
-            } catch (err) {
-                errors.push(`Row ${rowNum}: Failed to create auth user: ${err}`)
-                skipped++
-            }
-        }
-
-        if (batchCount > 0) {
-            await batch.commit()
-        }
-
-        revalidatePath('/admin/users')
+        const result = await commitUsersImport(rows, 'merge')
+        revalidatePath('/admin/import')
 
         return {
-            success: true,
-            imported,
-            skipped,
-            errors: errors.length > 0 ? errors : undefined,
+            success: result.failed === 0,
+            imported: result.success,
+            skipped: result.skipped,
+            errors: result.errors.length > 0 ? result.errors : undefined,
+            errorReport: result.errorReport,
+            error: result.failed > 0 ? 'Some rows could not be imported' : undefined,
         }
     } catch (error) {
         console.error('CSV import error:', error)
@@ -167,45 +119,269 @@ export async function importUsersFromCSV(csvContent: string): Promise<CSVImportR
     }
 }
 
-/**
- * Export users to CSV (admin only)
- */
-export async function exportUsersToCSV(): Promise<CSVExportResult> {
+export async function exportUsersToCSV(options?: CSVExportOptions): Promise<CSVExportResult> {
     try {
-        await requireAdmin()
+        const adminUser = await requireAdmin()
 
-        const snapshot = await adminDb.collection('users').orderBy('name').get()
+        const [usersSnapshot, familiesSnapshot] = await Promise.all([
+            adminDb.collection('users').orderBy('name').get(),
+            adminDb.collection('families').get(),
+        ])
 
-        const lines = ['name,email,role,family,created_at']
-
-        // Fetch families to map IDs to Names
-        // Optimization: Fetch all families once
-        const famSnap = await adminDb.collection('families').get()
-        const familyMap = new Map()
-        famSnap.forEach(doc => familyMap.set(doc.id, doc.data().name))
-
-        snapshot.forEach(doc => {
-            const u = doc.data() as UserDoc
-            const familyName = u.familyId ? familyMap.get(u.familyId) || '' : ''
-            const created = u.createdAt?.toDate().toISOString().split('T')[0] || ''
-            lines.push(`"${u.name}","${u.email}","${u.role}","${familyName}","${created}"`)
+        const familyMap = new Map<string, string>()
+        familiesSnapshot.forEach(doc => {
+            familyMap.set(doc.id, doc.data().name)
         })
 
-        return {
-            success: true,
-            data: lines.join('\n'),
-        }
+        const lines = [
+            'uid,name,email,role,family_id,family_name,created_at,updated_at',
+        ]
+
+        usersSnapshot.docs
+            .filter(doc => !options?.familyId || doc.data().familyId === options.familyId)
+            .forEach(doc => {
+            const user = doc.data() as UserDoc
+            lines.push(formatCsvLine([
+                user.uid,
+                user.name,
+                user.email,
+                user.role,
+                user.familyId || '',
+                user.familyId ? familyMap.get(user.familyId) || '' : '',
+                user.createdAt?.toDate?.().toISOString() || '',
+                user.updatedAt?.toDate?.().toISOString() || '',
+            ]))
+            })
+
+        await logExport(
+            adminUser,
+            'USER',
+            `Exported users CSV with ${describeExportFilters(options)}`,
+            options
+        )
+
+        return { success: true, data: lines.join('\n') }
     } catch (error) {
         console.error('CSV export error:', error)
         return { success: false, error: 'Failed to export users' }
     }
 }
 
-// ... (Other export functions similar logic: fetch collection, map data)
-// Skipping exportPairings/Leaderboard implementation detail for brevity - apply same pattern.
-export async function exportPairingsToCSV(): Promise<CSVExportResult> {
-    return { success: true, data: '' } // Placeholder
+export async function exportPairingsToCSV(options?: CSVExportOptions): Promise<CSVExportResult> {
+    try {
+        const adminUser = await requireAdmin()
+
+        const [pairingsSnapshot, usersSnapshot, familiesSnapshot] = await Promise.all([
+            adminDb.collection('pairings').orderBy('createdAt', 'desc').get(),
+            adminDb.collection('users').get(),
+            adminDb.collection('families').get(),
+        ])
+
+        const userMap = new Map<string, UserDoc>()
+        usersSnapshot.forEach(doc => {
+            userMap.set(doc.id, doc.data() as UserDoc)
+        })
+
+        const familyMap = new Map<string, string>()
+        familiesSnapshot.forEach(doc => {
+            familyMap.set(doc.id, doc.data().name)
+        })
+
+        const lines = [
+            'pairing_id,family_id,family_name,mentor_id,mentor_name,mentor_email,mentee1_id,mentee1_name,mentee1_email,mentee2_id,mentee2_name,mentee2_email,weekly_points,total_points,created_at,updated_at',
+        ]
+
+        pairingsSnapshot.docs
+            .filter(doc => !options?.familyId || doc.data().familyId === options.familyId)
+            .forEach(doc => {
+            const pairing = doc.data() as PairingDoc
+            const mentor = userMap.get(pairing.mentorId)
+            const mentees = (pairing.menteeIds || []).map(id => userMap.get(id) || null)
+            const mentee1 = mentees[0]
+            const mentee2 = mentees[1]
+
+            lines.push(formatCsvLine([
+                doc.id,
+                pairing.familyId,
+                familyMap.get(pairing.familyId) || '',
+                pairing.mentorId,
+                mentor?.name || '',
+                mentor?.email || '',
+                pairing.menteeIds?.[0] || '',
+                mentee1?.name || '',
+                mentee1?.email || '',
+                pairing.menteeIds?.[1] || '',
+                mentee2?.name || '',
+                mentee2?.email || '',
+                pairing.weeklyPoints || 0,
+                pairing.totalPoints || 0,
+                pairing.createdAt?.toDate?.().toISOString() || '',
+                pairing.updatedAt?.toDate?.().toISOString() || '',
+            ]))
+            })
+
+        await logExport(
+            adminUser,
+            'PAIRING',
+            `Exported pairings CSV with ${describeExportFilters(options)}`,
+            options
+        )
+
+        return { success: true, data: lines.join('\n') }
+    } catch (error) {
+        console.error('CSV export error:', error)
+        return { success: false, error: 'Failed to export pairings' }
+    }
 }
-export async function exportLeaderboardToCSV(): Promise<CSVExportResult> {
-    return { success: true, data: '' } // Placeholder
+
+export async function exportLeaderboardToCSV(options?: CSVExportOptions): Promise<CSVExportResult> {
+    try {
+        const adminUser = await requireAdmin()
+
+        if (options?.seasonYear || options?.weekNumber || options?.familyId) {
+            const [familiesSnapshot, pairingsSnapshot, usersSnapshot, submissionsSnapshot] = await Promise.all([
+                adminDb.collection('families').get(),
+                adminDb.collection('pairings').get(),
+                adminDb.collection('users').get(),
+                adminDb.collection('submissions').where('status', '==', 'APPROVED').get(),
+            ])
+
+            const userMap = new Map<string, string>()
+            usersSnapshot.forEach(doc => {
+                userMap.set(doc.id, doc.data().name || 'Unknown')
+            })
+
+            const familyMap = new Map<string, { id: string; name: string }>()
+            familiesSnapshot.forEach(doc => {
+                familyMap.set(doc.id, { id: doc.id, name: doc.data().name })
+            })
+
+            const pairings = pairingsSnapshot.docs
+                .map(doc => ({ ...(doc.data() as PairingDoc), id: doc.id }))
+                .filter(pairing => !options?.familyId || pairing.familyId === options.familyId)
+
+            const pairingTotals = new Map<string, number>()
+            const familyTotals = new Map<string, number>()
+
+            submissionsSnapshot.docs.forEach(doc => {
+                const submission = doc.data() as SubmissionDoc
+                if (options?.seasonYear && submission.year !== options.seasonYear) {
+                    return
+                }
+                if (options?.weekNumber && submission.weekNumber !== options.weekNumber) {
+                    return
+                }
+
+                const pairing = pairings.find(item => item.id === submission.pairingId)
+                if (!pairing) {
+                    return
+                }
+
+                pairingTotals.set(pairing.id, (pairingTotals.get(pairing.id) || 0) + (submission.totalPoints || 0))
+                familyTotals.set(pairing.familyId, (familyTotals.get(pairing.familyId) || 0) + (submission.totalPoints || 0))
+            })
+
+            const lines = [
+                'leaderboard_type,rank,name,family_name,mentor_name,mentee_names,total_points,season_year,week_number',
+            ]
+
+            const rankedFamilies = Array.from(familyTotals.entries())
+                .sort((left, right) => right[1] - left[1])
+            rankedFamilies.forEach(([familyId, totalPoints], index) => {
+                const family = familyMap.get(familyId)
+                lines.push(formatCsvLine([
+                    'family',
+                    index + 1,
+                    family?.name || familyId,
+                    family?.name || familyId,
+                    '',
+                    '',
+                    totalPoints,
+                    options?.seasonYear || '',
+                    options?.weekNumber || '',
+                ]))
+            })
+
+            const rankedPairings = pairings
+                .map(pairing => ({ pairing, totalPoints: pairingTotals.get(pairing.id) || 0 }))
+                .filter(entry => entry.totalPoints > 0)
+                .sort((left, right) => right.totalPoints - left.totalPoints)
+
+            rankedPairings.forEach(({ pairing, totalPoints }, index) => {
+                lines.push(formatCsvLine([
+                    'pairing',
+                    index + 1,
+                    `${userMap.get(pairing.mentorId) || 'Unknown Mentor'} & ${(pairing.menteeIds || []).map(id => userMap.get(id) || 'Unknown').join(', ')}`,
+                    familyMap.get(pairing.familyId)?.name || pairing.familyId,
+                    userMap.get(pairing.mentorId) || 'Unknown Mentor',
+                    (pairing.menteeIds || []).map(id => userMap.get(id) || 'Unknown').join('; '),
+                    totalPoints,
+                    options?.seasonYear || '',
+                    options?.weekNumber || '',
+                ]))
+            })
+
+            await logExport(
+                adminUser,
+                'LEADERBOARD',
+                `Exported leaderboard CSV with ${describeExportFilters(options)}`,
+                options
+            )
+
+            return { success: true, data: lines.join('\n') }
+        }
+
+        const [families, pairings] = await Promise.all([
+            getFamilyLeaderboard(),
+            getPairingLeaderboard(),
+        ])
+
+        const lines = [
+            'leaderboard_type,rank,name,family_name,mentor_name,mentee_names,total_points,weekly_points,member_count,created_at,updated_at',
+        ]
+
+        families.forEach((family, index) => {
+            lines.push(formatCsvLine([
+                'family',
+                index + 1,
+                family.name,
+                family.name,
+                '',
+                '',
+                family.totalPoints,
+                family.weeklyPoints,
+                family.memberCount,
+                family.createdAt.toISOString(),
+                family.updatedAt.toISOString(),
+            ]))
+        })
+
+        pairings.forEach((pairing, index) => {
+            lines.push(formatCsvLine([
+                'pairing',
+                index + 1,
+                `${pairing.mentorName} & ${pairing.menteeNames.join(', ')}`,
+                pairing.familyName,
+                pairing.mentorName,
+                pairing.menteeNames.join('; '),
+                pairing.totalPoints,
+                pairing.weeklyPoints,
+                '',
+                pairing.createdAt.toISOString(),
+                pairing.updatedAt.toISOString(),
+            ]))
+        })
+
+        await logExport(
+            adminUser,
+            'LEADERBOARD',
+            `Exported leaderboard CSV with ${describeExportFilters(options)}`,
+            options
+        )
+
+        return { success: true, data: lines.join('\n') }
+    } catch (error) {
+        console.error('CSV export error:', error)
+        return { success: false, error: 'Failed to export leaderboard' }
+    }
 }
