@@ -45,3 +45,11 @@ export async function getAuditLogs(limitCount = 50) {
         return []
     }
 }
+
+export async function getCsvActivityHistory(limitCount = 50) {
+    const logs = await getAuditLogs(Math.max(limitCount * 4, 100))
+
+    return logs
+        .filter(log => log.action === 'IMPORT' || log.action === 'EXPORT')
+        .slice(0, limitCount)
+}
