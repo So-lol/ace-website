@@ -56,7 +56,8 @@ export interface PairingDoc {
 // submissions/{id}
 export interface SubmissionDoc {
     id: string
-    pairingId: string
+    pairingId?: string
+    familyId?: string
     submitterId: string
     weekNumber: number
     year: number
@@ -70,6 +71,9 @@ export interface SubmissionDoc {
     reviewReason?: string
     reviewedAt?: Timestamp
     bonusActivityIds: string[] // IDs of claimed bonuses
+    uploadState?: 'UPLOADING' | 'UPLOADED' | 'FAILED'
+    uploadError?: string
+    uploadedAt?: Timestamp
     isArchived?: boolean       // For media retention policy
     archivedAt?: Timestamp     // When it was archived
     createdAt: Timestamp

@@ -2,7 +2,7 @@
 
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app'
 import { connectAuthEmulator, getAuth, Auth } from 'firebase/auth'
-import { getStorage, FirebaseStorage } from 'firebase/storage'
+import { getStorage, FirebaseStorage, connectStorageEmulator } from 'firebase/storage'
 
 // Firebase configuration - replace with your config from Firebase Console
 const firebaseConfig = {
@@ -32,6 +32,7 @@ let app: FirebaseApp | null = null
 let auth: Auth | null = null
 let storage: FirebaseStorage | null = null
 let authEmulatorConnected = false
+let storageEmulatorConnected = false
 
 export const isFirebaseClientConfigured = useEmulators || Object.values(firebaseConfig).every(Boolean)
 
@@ -47,6 +48,15 @@ if (typeof window !== 'undefined' && isFirebaseClientConfigured) {
             { disableWarnings: true }
         )
         authEmulatorConnected = true
+    }
+
+    if (useEmulators && storage && !storageEmulatorConnected) {
+        connectStorageEmulator(
+            storage,
+            '127.0.0.1',
+            Number(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_EMULATOR_HOST?.split(':')[1] || '9199')
+        )
+        storageEmulatorConnected = true
     }
 }
 

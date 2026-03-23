@@ -33,10 +33,11 @@ import {
     AlertTriangle,
     CheckCircle,
     Clock,
-    XCircle
+    XCircle,
+    ShieldCheck
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { archiveMedia, restoreMedia, deleteArchivedMedia } from '@/lib/actions/media'
+import { archiveMedia, restoreMedia, deleteArchivedMedia, MediaStorageAuditReport, reconcileMediaStorage } from '@/lib/actions/media'
 import { useRouter } from 'next/navigation'
 
 interface MediaItem {
@@ -76,6 +77,7 @@ export default function MediaList({ media, stats }: MediaListProps) {
     const [isLoading, setIsLoading] = useState<string | null>(null)
     const [selectedImage, setSelectedImage] = useState<MediaItem | null>(null)
     const [confirmDelete, setConfirmDelete] = useState<MediaItem | null>(null)
+    const [reconciliationReport, setReconciliationReport] = useState<MediaStorageAuditReport | null>(null)
 
     const filteredMedia = media.filter(item => {
         // Apply filter
@@ -136,6 +138,30 @@ export default function MediaList({ media, stats }: MediaListProps) {
             } else {
                 toast.error(result.error || 'Failed to delete')
             }
+        } catch {
+            toast.error('An error occurred')
+        } finally {
+            setIsLoading(null)
+        }
+    }
+
+    const handleRunIntegrityCheck = async () => {
+        setIsLoading('reconcile')
+        try {
+            const result = await reconcileMediaStorage()
+            if (!result.success) {
+                toast.error(result.error || 'Failed to run integrity check')
+                return
+            }
+
+            setReconciliationReport(result.report)
+
+            if (result.report.issueCount === 0) {
+                toast.success(`Integrity check passed for ${result.report.scannedSubmissions} submissions`)
+                return
+            }
+
+            toast.error(`Integrity check found ${result.report.issueCount} issues`)
         } catch {
             toast.error('An error occurred')
         } finally {
@@ -214,7 +240,70 @@ export default function MediaList({ media, stats }: MediaListProps) {
                         <SelectItem value="deletable">Eligible for Deletion</SelectItem>
                     </SelectContent>
                 </Select>
+                <Button
+                    type="button"
+                    variant="outline"
+                    className="gap-2"
+                    onClick={handleRunIntegrityCheck}
+                    disabled={isLoading === 'reconcile'}
+                >
+                    {isLoading === 'reconcile' ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                    Run Integrity Check
+                </Button>
             </div>
+
+            {reconciliationReport && (
+                <Card className={reconciliationReport.issueCount === 0 ? 'border-green-200' : 'border-red-200'}>
+                    <CardContent className="p-4 space-y-3">
+                        <div className="flex items-start justify-between gap-4">
+                            <div>
+                                <div className="font-semibold">Latest Integrity Check</div>
+                                <div className="text-sm text-muted-foreground">
+                                    {new Date(reconciliationReport.auditedAt).toLocaleString('en-US')}
+                                </div>
+                            </div>
+                            <Badge variant={reconciliationReport.issueCount === 0 ? 'default' : 'destructive'}>
+                                {reconciliationReport.issueCount === 0 ? 'Healthy' : `${reconciliationReport.issueCount} issue${reconciliationReport.issueCount === 1 ? '' : 's'}`}
+                            </Badge>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                            <div>
+                                <div className="font-semibold">{reconciliationReport.scannedSubmissions}</div>
+                                <div className="text-muted-foreground">Submissions scanned</div>
+                            </div>
+                            <div>
+                                <div className="font-semibold">{reconciliationReport.healthySubmissions}</div>
+                                <div className="text-muted-foreground">Healthy uploads</div>
+                            </div>
+                            <div>
+                                <div className="font-semibold text-red-600">{reconciliationReport.missingFiles}</div>
+                                <div className="text-muted-foreground">Missing files</div>
+                            </div>
+                            <div>
+                                <div className="font-semibold text-amber-600">{reconciliationReport.orphanedFiles}</div>
+                                <div className="text-muted-foreground">Orphaned files</div>
+                            </div>
+                        </div>
+                        {reconciliationReport.issueCount > 0 && (
+                            <div className="space-y-2">
+                                <div className="text-sm font-medium">Issues</div>
+                                <div className="space-y-2">
+                                    {reconciliationReport.issues.slice(0, 8).map((issue, index) => (
+                                        <div key={`${issue.code}-${issue.submissionId || issue.imagePath || index}`} className="rounded-md border p-2 text-sm">
+                                            <div className="font-medium">{issue.code}</div>
+                                            {issue.submissionId && <div className="text-muted-foreground">Submission: {issue.submissionId}</div>}
+                                            {issue.imagePath && <div className="text-muted-foreground break-all">Path: {issue.imagePath}</div>}
+                                            {typeof issue.ageMinutes === 'number' && (
+                                                <div className="text-muted-foreground">Age: {issue.ageMinutes} minutes</div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
 
             {/* Media Grid */}
             {filteredMedia.length === 0 ? (

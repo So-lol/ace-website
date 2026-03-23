@@ -58,7 +58,7 @@ export default async function DashboardPage() {
     const currentWeekSubmissions = submissions.filter(
         s => s.weekNumber === weekNumber && s.year === year
     )
-    const hasSubmittedThisWeek = currentWeekSubmissions.length > 0
+    const currentWeekSubmissionCount = currentWeekSubmissions.length
 
     // Profile Fallbacks
     const familyName = profile?.family?.name || 'No Family Assigned'
@@ -157,21 +157,29 @@ export default async function DashboardPage() {
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    {hasSubmittedThisWeek ? (
+                                    {currentWeekSubmissionCount > 0 ? (
                                         <div className="text-center py-8">
                                             <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center mx-auto mb-4">
                                                 <CheckCircle2 className="w-8 h-8 text-green-600 dark:text-green-400" />
                                             </div>
-                                            <h3 className="font-semibold mb-2">All Done!</h3>
+                                            <h3 className="font-semibold mb-2">You&apos;re On A Roll!</h3>
                                             <p className="text-sm text-muted-foreground mb-4">
-                                                You&apos;ve already submitted your photo for this week.
+                                                You&apos;ve submitted {currentWeekSubmissionCount} photo{currentWeekSubmissionCount === 1 ? '' : 's'} this week. You can keep adding more.
                                             </p>
-                                            <Link href="/dashboard/submissions">
-                                                <Button variant="outline" className="gap-2">
-                                                    View Submission
-                                                    <ArrowRight className="w-4 h-4" />
-                                                </Button>
-                                            </Link>
+                                            <div className="flex justify-center gap-2">
+                                                <Link href="/dashboard/submissions">
+                                                    <Button variant="outline" className="gap-2">
+                                                        View Submissions
+                                                        <ArrowRight className="w-4 h-4" />
+                                                    </Button>
+                                                </Link>
+                                                <Link href="/dashboard/submit">
+                                                    <Button className="gap-2 doraemon-gradient text-white">
+                                                        Submit Another
+                                                        <Camera className="w-4 h-4" />
+                                                    </Button>
+                                                </Link>
+                                            </div>
                                         </div>
                                     ) : (
                                         <div className="text-center py-8">

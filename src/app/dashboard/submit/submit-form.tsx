@@ -1,9 +1,8 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useDropzone } from 'react-dropzone'
 import { NavbarWithAuthClient, Footer } from '@/components/layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -15,10 +14,9 @@ import {
     X,
     ArrowLeft,
     ImageIcon,
-    CheckCircle2,
-    AlertCircle
+    CheckCircle2
 } from 'lucide-react'
-import { uploadSubmissionImage, createSubmission, deleteUploadedImage } from '@/lib/actions/submissions'
+import { submitPhotoSubmission } from '@/lib/actions/submissions'
 import { toast } from 'sonner'
 import { BonusActivity } from '@/types'
 
@@ -26,10 +24,9 @@ interface SubmitFormProps {
     bonusActivities: BonusActivity[]
     weekNumber: number
     year: number
-    existingSubmissionStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | null
 }
 
-export default function SubmitForm({ bonusActivities, weekNumber, year, existingSubmissionStatus }: SubmitFormProps) {
+export default function SubmitForm({ bonusActivities, weekNumber, year }: SubmitFormProps) {
     // deadline calculation (next Sunday) could be added here or passed in
     // For now, simple text
     const deadline = "Sunday 11:59 PM"
@@ -41,39 +38,64 @@ export default function SubmitForm({ bonusActivities, weekNumber, year, existing
         deadline
     }
     const router = useRouter()
+    const fileInputRef = useRef<HTMLInputElement | null>(null)
     const [file, setFile] = useState<File | null>(null)
     const [preview, setPreview] = useState<string | null>(null)
     const [selectedBonuses, setSelectedBonuses] = useState<string[]>([])
     const [isSubmitting, setIsSubmitting] = useState(false)
-    const hasExistingSubmission = existingSubmissionStatus !== null
+    const [isDragActive, setIsDragActive] = useState(false)
+    const getSelectedFile = () => file || fileInputRef.current?.files?.[0] || null
 
-    const onDrop = useCallback((acceptedFiles: File[]) => {
-        const selectedFile = acceptedFiles[0]
+    const setSelectedFile = useCallback((selectedFile: File | null) => {
         if (selectedFile) {
+            setPreview((previousPreview) => {
+                if (previousPreview) {
+                    URL.revokeObjectURL(previousPreview)
+                }
+                return URL.createObjectURL(selectedFile)
+            })
             setFile(selectedFile)
-            const objectUrl = URL.createObjectURL(selectedFile)
-            setPreview(objectUrl)
+            return
         }
+
+        setFile(null)
+        setPreview((previousPreview) => {
+            if (previousPreview) {
+                URL.revokeObjectURL(previousPreview)
+            }
+            return null
+        })
     }, [])
 
-    const { getRootProps, getInputProps, isDragActive } = useDropzone({
-        onDrop,
-        accept: {
-            'image/jpeg': ['.jpg', '.jpeg'],
-            'image/png': ['.png'],
-            'image/heic': ['.heic'],
-            'image/webp': ['.webp']
-        },
-        maxSize: 10 * 1024 * 1024, // 10MB
-        maxFiles: 1
-    })
+    useEffect(() => {
+        return () => {
+            if (preview) {
+                URL.revokeObjectURL(preview)
+            }
+        }
+    }, [preview])
 
     const removeFile = () => {
-        setFile(null)
-        if (preview) {
-            URL.revokeObjectURL(preview)
-            setPreview(null)
+        if (fileInputRef.current) {
+            fileInputRef.current.value = ''
         }
+        setSelectedFile(null)
+    }
+
+    const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const selectedFile = event.target.files?.[0] || null
+        setSelectedFile(selectedFile)
+    }
+
+    const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+        event.preventDefault()
+        setIsDragActive(false)
+        const selectedFile = event.dataTransfer.files?.[0] || null
+        setSelectedFile(selectedFile)
+    }
+
+    const openFilePicker = () => {
+        fileInputRef.current?.click()
     }
 
     const toggleBonus = (bonusId: string) => {
@@ -86,36 +108,24 @@ export default function SubmitForm({ bonusActivities, weekNumber, year, existing
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!file) return
+        const selectedFile = getSelectedFile()
+        if (!selectedFile) {
+            toast.error('Please choose a photo to upload.')
+            return
+        }
 
         setIsSubmitting(true)
 
         try {
-            const normalizedFile = await normalizeImageFile(file)
-
-            // Step 1: Upload image to Firebase Storage
-            const uploadFormData = new FormData()
-            uploadFormData.append('file', normalizedFile)
-
-            const uploadResult = await uploadSubmissionImage(uploadFormData)
-            if (!uploadResult.success || !uploadResult.imageUrl || !uploadResult.imagePath) {
-                toast.error(uploadResult.error || 'Failed to upload image')
-                setIsSubmitting(false)
-                return
-            }
-
-            // Step 2: Create submission record
-            const submissionResult = await createSubmission(
-                uploadResult.imageUrl,
-                uploadResult.imagePath,
+            const normalizedFile = await normalizeImageFile(selectedFile)
+            const submissionResult = await submitPhotoSubmission(
+                normalizedFile,
                 currentWeek.weekNumber,
                 currentWeek.year,
                 selectedBonuses
             )
 
             if (!submissionResult.success) {
-                // Clean up uploaded image on failure
-                await deleteUploadedImage(uploadResult.imagePath)
                 toast.error(submissionResult.error || 'Failed to create submission')
                 setIsSubmitting(false)
                 return
@@ -140,34 +150,6 @@ export default function SubmitForm({ bonusActivities, weekNumber, year, existing
     const totalPoints = basePoints + bonusPoints
 
     // ... Render code ...
-    if (hasExistingSubmission) {
-        return (
-            <div className="min-h-screen flex flex-col">
-                <NavbarWithAuthClient />
-                <main className="flex-1 flex items-center justify-center py-12 px-4">
-                    <Card className="max-w-md w-full text-center">
-                        <CardContent className="pt-8">
-                            <div className="w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-900 flex items-center justify-center mx-auto mb-4">
-                                <AlertCircle className="w-8 h-8 text-amber-600 dark:text-amber-400" />
-                            </div>
-                            <h2 className="text-xl font-bold mb-2">Already Submitted</h2>
-                            <p className="text-muted-foreground mb-6">
-                                You&apos;ve already submitted a photo for Week {currentWeek.weekNumber}.
-                                Status: {existingSubmissionStatus?.toLowerCase()}. Only one submission per week is allowed.
-                            </p>
-                            <Link href="/dashboard/submissions">
-                                <Button className="gap-2">
-                                    View Your Submission
-                                </Button>
-                            </Link>
-                        </CardContent>
-                    </Card>
-                </main>
-                <Footer />
-            </div>
-        )
-    }
-
     return (
         <div className="min-h-screen flex flex-col">
             <NavbarWithAuthClient />
@@ -206,14 +188,34 @@ export default function SubmitForm({ bonusActivities, weekNumber, year, existing
                             <CardContent>
                                 {!file ? (
                                     <div
-                                        {...getRootProps()}
+                                        onClick={openFilePicker}
+                                        onDragEnter={(event) => {
+                                            event.preventDefault()
+                                            setIsDragActive(true)
+                                        }}
+                                        onDragOver={(event) => {
+                                            event.preventDefault()
+                                            setIsDragActive(true)
+                                        }}
+                                        onDragLeave={(event) => {
+                                            event.preventDefault()
+                                            setIsDragActive(false)
+                                        }}
+                                        onDrop={handleDrop}
                                         className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors
                       ${isDragActive
                                                 ? 'border-primary bg-primary/5'
                                                 : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50'
                                             }`}
                                     >
-                                        <input {...getInputProps()} />
+                                        <input
+                                            ref={fileInputRef}
+                                            type="file"
+                                            accept=".jpg,.jpeg,.png,.heic,.webp,image/jpeg,image/png,image/heic,image/webp"
+                                            onChange={handleFileInputChange}
+                                            className="hidden"
+                                            data-testid="submission-file-input"
+                                        />
                                         <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
                                             <Upload className="w-8 h-8 text-muted-foreground" />
                                         </div>
@@ -223,6 +225,12 @@ export default function SubmitForm({ bonusActivities, weekNumber, year, existing
                                         <p className="text-sm text-muted-foreground mb-4">
                                             or click to select a file
                                         </p>
+                                        <Button type="button" variant="outline" className="mb-4" onClick={(event) => {
+                                            event.stopPropagation()
+                                            openFilePicker()
+                                        }}>
+                                            Choose File
+                                        </Button>
                                         <p className="text-xs text-muted-foreground">
                                             JPG, PNG, HEIC, or WebP • Max 10MB
                                         </p>
@@ -274,6 +282,7 @@ export default function SubmitForm({ bonusActivities, weekNumber, year, existing
                                         bonusActivities.map((bonus) => (
                                             <div
                                                 key={bonus.id}
+                                                data-testid={`bonus-option-${bonus.id}`}
                                                 className={`flex items-start gap-4 p-4 rounded-lg border-2 transition-colors cursor-pointer
                         ${selectedBonuses.includes(bonus.id)
                                                         ? 'border-primary bg-primary/5'
@@ -292,6 +301,11 @@ export default function SubmitForm({ bonusActivities, weekNumber, year, existing
                                                     <Label
                                                         htmlFor={bonus.id}
                                                         className="font-medium cursor-pointer"
+                                                        onClick={(event) => {
+                                                            event.preventDefault()
+                                                            event.stopPropagation()
+                                                            toggleBonus(bonus.id)
+                                                        }}
                                                     >
                                                         {bonus.name}
                                                     </Label>
@@ -336,7 +350,7 @@ export default function SubmitForm({ bonusActivities, weekNumber, year, existing
                             type="submit"
                             size="lg"
                             className="w-full h-12 doraemon-gradient text-white gap-2"
-                            disabled={!file || isSubmitting}
+                            disabled={isSubmitting}
                         >
                             {isSubmitting ? (
                                 <>
@@ -364,45 +378,50 @@ export default function SubmitForm({ bonusActivities, weekNumber, year, existing
 }
 
 async function normalizeImageFile(file: File): Promise<File> {
-    if (typeof window === 'undefined') {
-        return file
-    }
+    try {
+        if (typeof window === 'undefined') {
+            return file
+        }
 
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-        return file
-    }
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+            return file
+        }
 
-    const imageBitmap = await createImageBitmap(file)
-    const maxDimension = 1600
-    const scale = Math.min(1, maxDimension / Math.max(imageBitmap.width, imageBitmap.height))
-    const width = Math.max(1, Math.round(imageBitmap.width * scale))
-    const height = Math.max(1, Math.round(imageBitmap.height * scale))
-    const canvas = document.createElement('canvas')
+        const imageBitmap = await createImageBitmap(file)
+        const maxDimension = 1600
+        const scale = Math.min(1, maxDimension / Math.max(imageBitmap.width, imageBitmap.height))
+        const width = Math.max(1, Math.round(imageBitmap.width * scale))
+        const height = Math.max(1, Math.round(imageBitmap.height * scale))
+        const canvas = document.createElement('canvas')
 
-    canvas.width = width
-    canvas.height = height
+        canvas.width = width
+        canvas.height = height
 
-    const context = canvas.getContext('2d')
-    if (!context) {
+        const context = canvas.getContext('2d')
+        if (!context) {
+            imageBitmap.close()
+            return file
+        }
+
+        context.drawImage(imageBitmap, 0, 0, width, height)
         imageBitmap.close()
+
+        const compressedBlob = await new Promise<Blob | null>((resolve) => {
+            canvas.toBlob((blob) => resolve(blob), 'image/webp', 0.82)
+        })
+
+        if (!compressedBlob || compressedBlob.size >= file.size) {
+            return file
+        }
+
+        const normalizedName = file.name.replace(/\.[^.]+$/, '') || 'submission'
+
+        return new File([compressedBlob], `${normalizedName}.webp`, {
+            type: 'image/webp',
+            lastModified: Date.now(),
+        })
+    } catch (error) {
+        console.warn('Falling back to original image after normalization failure:', error)
         return file
     }
-
-    context.drawImage(imageBitmap, 0, 0, width, height)
-    imageBitmap.close()
-
-    const compressedBlob = await new Promise<Blob | null>((resolve) => {
-        canvas.toBlob((blob) => resolve(blob), 'image/webp', 0.82)
-    })
-
-    if (!compressedBlob || compressedBlob.size >= file.size) {
-        return file
-    }
-
-    const normalizedName = file.name.replace(/\.[^.]+$/, '') || 'submission'
-
-    return new File([compressedBlob], `${normalizedName}.webp`, {
-        type: 'image/webp',
-        lastModified: Date.now(),
-    })
 }

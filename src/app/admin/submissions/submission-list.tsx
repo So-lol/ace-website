@@ -146,9 +146,11 @@ export default function SubmissionList({ submissions }: SubmissionListProps) {
                         <div className="flex justify-between items-start mb-2">
                             <div>
                                 <h3 className="font-semibold text-lg">
-                                    {submission.pairing ?
-                                        `${submission.pairing.mentor?.name?.split(' ').pop()} & ...`
-                                        : 'Unknown Pairing'}
+                                    {submission.pairing
+                                        ? submission.pairing.menteeIds.length > 0
+                                            ? `${submission.pairing.mentor?.name?.split(' ').pop()} & ...`
+                                            : submission.submitter.name
+                                        : submission.submitter.name}
                                 </h3>
                                 <p className="text-sm text-muted-foreground">
                                     {submission.pairing?.family?.name || 'Unknown Family'} • Week {submission.weekNumber}

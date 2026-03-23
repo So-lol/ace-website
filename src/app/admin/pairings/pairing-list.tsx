@@ -207,7 +207,7 @@ export default function PairingList({ pairings, families, users }: PairingListPr
         .sort((a, b) => a.name.localeCompare(b.name))
 
     const availableMentees = users
-        .filter(u => u.role === 'MENTEE' && !assignedMenteeIds.has(u.id))
+        .filter(u => (u.role === 'MENTEE' || u.role === 'ADMIN') && !assignedMenteeIds.has(u.id))
         .sort((a, b) => a.name.localeCompare(b.name))
 
     return (
@@ -334,7 +334,7 @@ export default function PairingList({ pairings, families, users }: PairingListPr
                                         <div className="border rounded-md p-4 max-h-60 overflow-y-auto space-y-2">
                                             {availableMentees.length === 0 ? (
                                                 <div className="text-sm text-muted-foreground text-center py-4">
-                                                    All mentees have been assigned to pairings. Add another mentee if you need someone new.
+                                                    All eligible mentees have been assigned to pairings. Add another mentee if you need someone new.
                                                 </div>
                                             ) : (
                                                 availableMentees.map((u) => (
