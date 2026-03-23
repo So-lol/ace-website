@@ -43,7 +43,7 @@ const BONUS_CATEGORY_SECTIONS: Array<{
     {
         category: 'WEEKLY',
         title: 'Weekly Bonuses',
-        description: 'Weekly bonus opportunities defined by admins.',
+        description: 'Weekly bonus opportunities that occur every week.',
     },
 ]
 
