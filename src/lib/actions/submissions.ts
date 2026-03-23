@@ -300,8 +300,6 @@ export async function submitPhotoSubmission(
                 totalPoints,
                 bonusActivityIds: uniqueBonusIds,
                 uploadState: 'UPLOADING',
-                uploadError: null,
-                uploadedAt: null,
                 createdAt: now,
                 updatedAt: now,
             }

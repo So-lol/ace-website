@@ -213,7 +213,6 @@ export default function SubmitForm({ bonusActivities, weekNumber, year }: Submit
                                             type="file"
                                             accept=".jpg,.jpeg,.png,.heic,.webp,image/jpeg,image/png,image/heic,image/webp"
                                             onChange={handleFileInputChange}
-                                            onInput={handleFileInputChange}
                                             className="hidden"
                                             data-testid="submission-file-input"
                                         />
