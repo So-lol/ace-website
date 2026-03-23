@@ -2,12 +2,16 @@
 
 import { adminDb } from '@/lib/firebase-admin'
 import { requireAdmin, getAuthenticatedUser, type AuthenticatedUser } from '@/lib/auth-helpers'
-import { AceApplicationDoc } from '@/types/firestore'
-import { AceApplication, AceRole } from '@/types/index'
+import { AceApplicationDoc, AceApplicationSettingsDoc } from '@/types/firestore'
+import { AceApplication, AceApplicationSettings, AceRole } from '@/types/index'
 import { Timestamp } from 'firebase-admin/firestore'
 import { revalidatePath } from 'next/cache'
+import { logAuditAction } from '@/lib/actions/audit'
+import { areAceApplicationsOpen } from '@/lib/ace-application-settings'
 
 const COLLECTION = 'aceApplications'
+const SETTINGS_COLLECTION = 'appSettings'
+const SETTINGS_DOC_ID = 'aceApplications'
 
 interface SubmitAceApplicationInput {
     // Contact
@@ -66,6 +70,42 @@ export interface CurrentAceApplicationStatus {
     } | null
 }
 
+interface UpdateAceApplicationSettingsInput {
+    isOpen: boolean
+    deadlineAtIso: string | null
+    revealAtIso: string | null
+}
+
+const DEFAULT_ACE_APPLICATION_SETTINGS: AceApplicationSettings = {
+    isOpen: true,
+    deadlineAt: null,
+    revealAt: null,
+    updatedAt: null,
+}
+
+function toDate(value: Timestamp | Date | null | undefined): Date | null {
+    if (value instanceof Timestamp) {
+        return value.toDate()
+    }
+
+    return value instanceof Date ? value : null
+}
+
+function docToAceApplicationSettings(
+    settings: Partial<AceApplicationSettingsDoc> | null | undefined
+): AceApplicationSettings {
+    if (!settings) {
+        return DEFAULT_ACE_APPLICATION_SETTINGS
+    }
+
+    return {
+        isOpen: settings.isOpen ?? true,
+        deadlineAt: toDate(settings.deadlineAt),
+        revealAt: toDate(settings.revealAt),
+        updatedAt: toDate(settings.updatedAt),
+    }
+}
+
 async function findExistingApplicationForUser(user: AuthenticatedUser): Promise<AceApplicationDoc | null> {
     const applicationByUid = await adminDb
         .collection(COLLECTION)
@@ -88,6 +128,70 @@ async function findExistingApplicationForUser(user: AuthenticatedUser): Promise<
     }
 
     return null
+}
+
+export async function getAceApplicationSettings(): Promise<AceApplicationSettings> {
+    try {
+        const settingsDoc = await adminDb.collection(SETTINGS_COLLECTION).doc(SETTINGS_DOC_ID).get()
+        if (!settingsDoc.exists) {
+            return DEFAULT_ACE_APPLICATION_SETTINGS
+        }
+
+        return docToAceApplicationSettings(settingsDoc.data() as AceApplicationSettingsDoc)
+    } catch (error) {
+        console.error('Error fetching ACE application settings:', error)
+        return DEFAULT_ACE_APPLICATION_SETTINGS
+    }
+}
+
+export async function updateAceApplicationSettings(input: UpdateAceApplicationSettingsInput) {
+    const admin = await requireAdmin()
+
+    try {
+        const deadlineAt = input.deadlineAtIso ? new Date(input.deadlineAtIso) : null
+        const revealAt = input.revealAtIso ? new Date(input.revealAtIso) : null
+
+        if (deadlineAt && Number.isNaN(deadlineAt.getTime())) {
+            return { success: false, error: 'Please enter a valid application deadline.' }
+        }
+
+        if (revealAt && Number.isNaN(revealAt.getTime())) {
+            return { success: false, error: 'Please enter a valid reveal date.' }
+        }
+
+        if (deadlineAt && revealAt && revealAt < deadlineAt) {
+            return { success: false, error: 'Reveal date must be after the application deadline.' }
+        }
+
+        await adminDb.collection(SETTINGS_COLLECTION).doc(SETTINGS_DOC_ID).set({
+            isOpen: input.isOpen,
+            deadlineAt: deadlineAt ? Timestamp.fromDate(deadlineAt) : null,
+            revealAt: revealAt ? Timestamp.fromDate(revealAt) : null,
+            updatedAt: Timestamp.now(),
+        } satisfies AceApplicationSettingsDoc)
+
+        revalidatePath('/apply')
+        revalidatePath('/admin/applications')
+
+        await logAuditAction(
+            admin.id,
+            'UPDATE',
+            'ACE_APPLICATION_SETTINGS',
+            SETTINGS_DOC_ID,
+            `Updated ACE application settings (${input.isOpen ? 'open' : 'closed'})`,
+            {
+                isOpen: input.isOpen,
+                deadlineAt: deadlineAt?.toISOString() ?? null,
+                revealAt: revealAt?.toISOString() ?? null,
+            },
+            admin.email
+        )
+
+        return { success: true }
+    } catch (error) {
+        console.error('Error updating ACE application settings:', error)
+        return { success: false, error: 'Failed to update ACE application settings.' }
+    }
 }
 
 export async function getCurrentAceApplicationStatus(): Promise<CurrentAceApplicationStatus> {
@@ -123,6 +227,11 @@ export async function submitAceApplication(input: SubmitAceApplicationInput) {
         const existingApplication = await findExistingApplicationForUser(authUser)
         if (existingApplication) {
             return { success: false, error: 'You have already applied to the ACE program.' }
+        }
+
+        const settings = await getAceApplicationSettings()
+        if (!areAceApplicationsOpen(settings)) {
+            return { success: false, error: 'ACE applications are currently closed.' }
         }
 
         // Basic validation

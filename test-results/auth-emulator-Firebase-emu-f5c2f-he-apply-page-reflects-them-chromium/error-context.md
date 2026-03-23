@@ -1,0 +1,121 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - navigation [ref=e4]:
+        - link "VSAM ACE Anh Chị Em Program" [ref=e5] [cursor=pointer]:
+          - /url: /
+          - img [ref=e8]
+          - generic [ref=e12]:
+            - text: VSAM ACE
+            - paragraph [ref=e13]: Anh Chị Em Program
+        - generic [ref=e14]:
+          - link "Apply" [ref=e15] [cursor=pointer]:
+            - /url: /apply
+            - button "Apply" [ref=e16]:
+              - img
+              - text: Apply
+          - link "Leaderboard" [ref=e17] [cursor=pointer]:
+            - /url: /leaderboard
+            - button "Leaderboard" [ref=e18]:
+              - img
+              - text: Leaderboard
+          - link "Announcements" [ref=e19] [cursor=pointer]:
+            - /url: /announcements
+            - button "Announcements" [ref=e20]:
+              - img
+              - text: Announcements
+          - link "About ACE" [ref=e21] [cursor=pointer]:
+            - /url: /about
+            - button "About ACE" [ref=e22]:
+              - img
+              - text: About ACE
+        - link "Sign In" [ref=e24] [cursor=pointer]:
+          - /url: /login
+          - button "Sign In" [ref=e25]:
+            - img
+            - text: Sign In
+    - main [ref=e26]:
+      - generic [ref=e27]:
+        - generic [ref=e28]:
+          - link [ref=e29] [cursor=pointer]:
+            - /url: /
+            - img [ref=e32]
+          - heading "Welcome Back" [level=1] [ref=e36]
+          - paragraph [ref=e37]: Sign in to your ACE account
+        - generic [ref=e38]:
+          - generic [ref=e39]:
+            - generic [ref=e40]: Sign In
+            - generic [ref=e41]: Enter your email and password to access your account
+          - generic [ref=e42]:
+            - generic [ref=e43]:
+              - generic [ref=e44]:
+                - generic [ref=e45]: Email
+                - textbox "Email" [ref=e46]:
+                  - /placeholder: your.email@umn.edu
+                  - text: admin-apps-1773989413062@example.com
+              - generic [ref=e47]:
+                - generic [ref=e48]:
+                  - generic [ref=e49]: Password
+                  - link "Forgot password?" [ref=e50] [cursor=pointer]:
+                    - /url: /forgot-password
+                - textbox "Password" [active] [ref=e51]:
+                  - /placeholder: ••••••••
+                  - text: Password123!
+              - button "Sign In" [ref=e52]
+            - paragraph [ref=e53]:
+              - text: Don't have an account?
+              - link "Sign up" [ref=e54] [cursor=pointer]:
+                - /url: /signup
+        - link "Back to home" [ref=e56] [cursor=pointer]:
+          - /url: /
+          - img [ref=e57]
+          - text: Back to home
+    - contentinfo [ref=e59]:
+      - generic [ref=e60]:
+        - generic [ref=e61]:
+          - generic [ref=e62]:
+            - link "VSAM ACE Anh Chị Em Program" [ref=e63] [cursor=pointer]:
+              - /url: /
+              - img [ref=e65]
+              - generic [ref=e68]:
+                - text: VSAM ACE
+                - paragraph [ref=e69]: Anh Chị Em Program
+            - paragraph [ref=e70]: The Anh Chị Em (ACE) program connects Vietnamese students at the University of Minnesota through meaningful mentorship relationships, building a stronger community for all.
+          - generic [ref=e71]:
+            - heading "Quick Links" [level=3] [ref=e72]
+            - list [ref=e73]:
+              - listitem [ref=e74]:
+                - link "ACE Application" [ref=e75] [cursor=pointer]:
+                  - /url: /apply
+              - listitem [ref=e76]:
+                - link "Leaderboard" [ref=e77] [cursor=pointer]:
+                  - /url: /leaderboard
+              - listitem [ref=e78]:
+                - link "Announcements" [ref=e79] [cursor=pointer]:
+                  - /url: /announcements
+              - listitem [ref=e80]:
+                - link "About ACE" [ref=e81] [cursor=pointer]:
+                  - /url: /about
+          - generic [ref=e82]:
+            - heading "Resources" [level=3] [ref=e83]
+            - list [ref=e84]:
+              - listitem [ref=e85]:
+                - link "Member Login" [ref=e86] [cursor=pointer]:
+                  - /url: /login
+              - listitem [ref=e87]:
+                - link "Contact Us" [ref=e88] [cursor=pointer]:
+                  - /url: /about#contact
+        - generic [ref=e89]:
+          - paragraph [ref=e90]: © 2026 Vietnamese Student Association of Minnesota. All rights reserved.
+          - paragraph [ref=e91]:
+            - text: Made with
+            - img [ref=e92]
+            - text: for the VSAM community
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e99] [cursor=pointer]:
+    - img [ref=e100]
+  - alert [ref=e103]
+```

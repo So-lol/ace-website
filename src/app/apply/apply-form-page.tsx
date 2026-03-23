@@ -19,16 +19,30 @@ import { PersonalStep } from '@/components/apply-form/personal-step'
 import { FinalStep } from '@/components/apply-form/final-step'
 import { SuccessScreen } from '@/components/apply-form/success-screen'
 
-export function ApplyFormPage() {
+function formatDateTime(value: string | null) {
+    if (!value) return null
+
+    return new Date(value).toLocaleString()
+}
+
+interface ApplyFormPageProps {
+    userId: string
+    deadlineAtIso: string | null
+    revealAtIso: string | null
+}
+
+export function ApplyFormPage({ userId, deadlineAtIso, revealAtIso }: ApplyFormPageProps) {
     const [step, setStep] = useState(1)
     const [formData, setFormData] = useState<FormData>(initialFormData)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isSubmitted, setIsSubmitted] = useState(false)
     const [isLoaded, setIsLoaded] = useState(false)
+    const storageKey = `ace-application-form:${userId}`
+    const stepStorageKey = `ace-application-step:${userId}`
 
     useEffect(() => {
-        const savedData = localStorage.getItem('ace-application-form')
-        const savedStep = localStorage.getItem('ace-application-step')
+        const savedData = localStorage.getItem(storageKey)
+        const savedStep = localStorage.getItem(stepStorageKey)
 
         if (savedData) {
             try {
@@ -48,14 +62,14 @@ export function ApplyFormPage() {
         }
 
         setIsLoaded(true)
-    }, [])
+    }, [storageKey, stepStorageKey])
 
     useEffect(() => {
         if (isLoaded) {
-            localStorage.setItem('ace-application-form', JSON.stringify(formData))
-            localStorage.setItem('ace-application-step', step.toString())
+            localStorage.setItem(storageKey, JSON.stringify(formData))
+            localStorage.setItem(stepStorageKey, step.toString())
         }
-    }, [formData, step, isLoaded])
+    }, [formData, step, isLoaded, storageKey, stepStorageKey])
 
     const update: FormUpdater = (field, value) => {
         setFormData((prev) => ({ ...prev, [field]: value }))
@@ -160,8 +174,8 @@ export function ApplyFormPage() {
             })
 
             if (result.success) {
-                localStorage.removeItem('ace-application-form')
-                localStorage.removeItem('ace-application-step')
+                localStorage.removeItem(storageKey)
+                localStorage.removeItem(stepStorageKey)
 
                 setIsSubmitted(true)
                 window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -176,7 +190,7 @@ export function ApplyFormPage() {
     }
 
     if (isSubmitted) {
-        return <SuccessScreen />
+        return <SuccessScreen revealAtIso={revealAtIso} />
     }
 
     return (
@@ -202,7 +216,9 @@ export function ApplyFormPage() {
 
                     <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-center mb-6">
                         <p className="text-sm font-medium text-destructive">
-                            ‼️📋 DEADLINE: 11:59 PM, FRIDAY, Feb 27
+                            {deadlineAtIso
+                                ? `Applications close ${formatDateTime(deadlineAtIso)}.`
+                                : 'Applications are reviewed after the submission window closes.'}
                         </p>
                     </div>
 
