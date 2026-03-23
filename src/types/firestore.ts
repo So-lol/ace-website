@@ -176,3 +176,11 @@ export interface AceApplicationDoc {
     createdAt: Timestamp
     updatedAt: Timestamp
 }
+
+// appSettings/aceApplications
+export interface AceApplicationSettingsDoc {
+    isOpen: boolean
+    deadlineAt: Timestamp | null
+    revealAt: Timestamp | null
+    updatedAt: Timestamp
+}

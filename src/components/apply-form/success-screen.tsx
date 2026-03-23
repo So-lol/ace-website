@@ -3,7 +3,14 @@ import { Button } from '@/components/ui/button'
 import { NavbarWithAuthClient, Footer } from '@/components/layout'
 import { CheckCircle2, ArrowLeft } from 'lucide-react'
 
-export function SuccessScreen() {
+function formatRevealDate(value: string | null) {
+    if (!value) return null
+    return new Date(value).toLocaleString()
+}
+
+export function SuccessScreen({ revealAtIso }: { revealAtIso: string | null }) {
+    const revealDate = formatRevealDate(revealAtIso)
+
     return (
         <div className="min-h-screen flex flex-col">
             <NavbarWithAuthClient />
@@ -17,9 +24,9 @@ export function SuccessScreen() {
                         Thank you for applying to VSAM&apos;s A.C.E. Program!
                     </p>
                     <p className="text-muted-foreground mb-8">
-                        We&apos;ll be reviewing applications and you&apos;ll learn about your pairing at the reveal event
-                        on <strong>Friday, March 6th from 6-8 PM</strong> in HSEC 3-110.
-                        Keep an eye on our Instagram for more details!
+                        {revealDate
+                            ? `We’ll review applications and share pairing details around the reveal event on ${revealDate}. Keep an eye on Instagram for updates.`
+                            : 'We’ll review applications and share pairing and reveal-event details through the usual ACE communication channels. Keep an eye on Instagram for updates.'}
                     </p>
                     <div className="flex gap-4 justify-center">
                         <Link href="/">

@@ -146,3 +146,10 @@ export interface AceApplication {
     createdAt: Date
     updatedAt: Date
 }
+
+export interface AceApplicationSettings {
+    isOpen: boolean
+    deadlineAt: Date | null
+    revealAt: Date | null
+    updatedAt: Date | null
+}

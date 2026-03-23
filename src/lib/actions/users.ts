@@ -281,6 +281,16 @@ export async function deleteUser(userId: string) {
 
         // 0. Delete user's application(s)
         const userDoc = await adminDb.collection('users').doc(userId).get()
+        const applicationIdsToDelete = new Set<string>()
+
+        const appsByApplicantIdSnap = await adminDb.collection('aceApplications')
+            .where('applicantId', '==', userId)
+            .get()
+
+        for (const appDoc of appsByApplicantIdSnap.docs) {
+            applicationIdsToDelete.add(appDoc.id)
+        }
+
         if (userDoc.exists) {
             const userEmail = userDoc.data()?.email
             if (userEmail) {
@@ -289,9 +299,13 @@ export async function deleteUser(userId: string) {
                     .get()
 
                 for (const appDoc of appsSnap.docs) {
-                    await appDoc.ref.delete()
+                    applicationIdsToDelete.add(appDoc.id)
                 }
             }
+        }
+
+        for (const applicationId of applicationIdsToDelete) {
+            await adminDb.collection('aceApplications').doc(applicationId).delete()
         }
 
         // 1. Delete user's submissions and their images from storage
