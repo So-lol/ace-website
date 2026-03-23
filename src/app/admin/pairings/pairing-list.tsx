@@ -89,10 +89,16 @@ export default function PairingList({ pairings, families, users }: PairingListPr
     const [selectedMenteeIds, setSelectedMenteeIds] = useState<string[]>([])
     const [editingPairingId, setEditingPairingId] = useState<string | null>(null)
 
-    const filteredPairings = pairings.filter(p =>
-        p.mentor?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.family?.name?.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+    const normalizedSearchTerm = searchTerm.trim().toLowerCase()
+
+    const filteredPairings = pairings.filter((pairing) => {
+        if (!normalizedSearchTerm) return true
+
+        const mentorName = pairing.mentor?.name?.toLowerCase() ?? ''
+        const familyName = pairing.family?.name?.toLowerCase() ?? ''
+
+        return mentorName.includes(normalizedSearchTerm) || familyName.includes(normalizedSearchTerm)
+    })
 
     // Group by family for display
     const familyGroups = filteredPairings.reduce((acc, pairing) => {
