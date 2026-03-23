@@ -171,10 +171,7 @@ export default async function SubmissionsPage() {
 
                                         {submission.status === 'APPROVED' && (
                                             <div className="text-sm text-muted-foreground mb-3">
-                                                Base: {submission.basePoints} pts
-                                                {submission.bonusPoints > 0 && (
-                                                    <span className="text-[#FFD700]"> + {submission.bonusPoints} bonus</span>
-                                                )}
+                                                Bonus total: <span className="text-[#FFD700]">{submission.bonusPoints} pts</span>
                                             </div>
                                         )}
 

@@ -1,6 +1,7 @@
 // Safe Client Types (No firebase-admin imports)
 import type { UserRole, SubmissionStatus } from './enums'
 export type { UserRole, SubmissionStatus }
+export type BonusCategory = 'ACTIVITY' | 'EVENT' | 'WEEKLY'
 
 // ======================
 // BASE INTERFACES (Client-side representations)
@@ -63,6 +64,7 @@ export interface BonusActivity {
     name: string
     description: string
     points: number
+    category: BonusCategory
     isActive: boolean
     createdAt: Date
     updatedAt: Date

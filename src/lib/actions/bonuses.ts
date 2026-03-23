@@ -2,11 +2,21 @@
 
 import { adminDb } from '@/lib/firebase-admin'
 import { BonusActivityDoc } from '@/types/firestore'
-import { BonusActivity } from '@/types'
+import { BonusActivity, BonusCategory } from '@/types'
 import { Timestamp } from 'firebase-admin/firestore'
 import { revalidatePath } from 'next/cache'
 import { requireAdmin } from '@/lib/auth-helpers'
 import { logAuditAction } from '@/lib/actions/audit'
+
+const DEFAULT_BONUS_CATEGORY: BonusCategory = 'ACTIVITY'
+
+function normalizeBonusCategory(category: unknown): BonusCategory {
+    if (category === 'ACTIVITY' || category === 'EVENT' || category === 'WEEKLY') {
+        return category
+    }
+
+    return DEFAULT_BONUS_CATEGORY
+}
 
 export async function getBonusActivities(activeOnly = false): Promise<BonusActivity[]> {
     try {
@@ -24,6 +34,7 @@ export async function getBonusActivities(activeOnly = false): Promise<BonusActiv
                 name: String(data.name || 'Bonus Activity'),
                 description: String(data.description || ''),
                 points: Number.isFinite(parsedPoints) ? parsedPoints : 0,
+                category: normalizeBonusCategory(data.category),
                 isActive: Boolean(data.isActive),
                 createdAt: data.createdAt.toDate(),
                 updatedAt: data.updatedAt.toDate(),
@@ -35,7 +46,7 @@ export async function getBonusActivities(activeOnly = false): Promise<BonusActiv
     }
 }
 
-export async function createBonusActivity(data: { name: string; description: string; points: number }) {
+export async function createBonusActivity(data: { name: string; description: string; points: number; category: BonusCategory }) {
     try {
         const admin = await requireAdmin()
 
@@ -44,6 +55,7 @@ export async function createBonusActivity(data: { name: string; description: str
             name: data.name,
             description: data.description,
             points: data.points,
+            category: normalizeBonusCategory(data.category),
             isActive: true,
             createdAt: Timestamp.now(),
             updatedAt: Timestamp.now(),
@@ -72,11 +84,16 @@ export async function createBonusActivity(data: { name: string; description: str
 export async function updateBonusActivity(id: string, data: Partial<BonusActivityDoc>) {
     try {
         const admin = await requireAdmin()
-
-        await adminDb.collection('bonusActivities').doc(id).update({
+        const updateData: Partial<BonusActivityDoc> & { updatedAt: Timestamp } = {
             ...data,
             updatedAt: Timestamp.now(),
-        })
+        }
+
+        if ('category' in data) {
+            updateData.category = normalizeBonusCategory(data.category)
+        }
+
+        await adminDb.collection('bonusActivities').doc(id).update(updateData)
 
         revalidatePath('/admin/bonuses')
         revalidatePath('/dashboard/submit')

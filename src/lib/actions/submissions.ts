@@ -249,7 +249,7 @@ async function calculateSubmissionPoints(bonusActivityIds: string[]) {
         throw new Error('Too many bonus activities selected.')
     }
 
-    const basePoints = 10
+    const basePoints = 0
     let bonusPoints = 0
 
     if (uniqueBonusIds.length > 0) {
@@ -273,7 +273,7 @@ async function calculateSubmissionPoints(bonusActivityIds: string[]) {
     return {
         basePoints,
         bonusPoints,
-        totalPoints: basePoints + bonusPoints,
+        totalPoints: bonusPoints,
         uniqueBonusIds,
     }
 }
@@ -494,7 +494,7 @@ export async function createSubmission(
         const pairingId = pairingDoc.id
 
         // Calculate points
-        const basePoints = 10
+        const basePoints = 0
         let bonusPoints = 0
 
         if (bonusActivityIds.length > 0) {
@@ -525,7 +525,7 @@ export async function createSubmission(
             })
         }
 
-        const totalPoints = basePoints + bonusPoints
+        const totalPoints = bonusPoints
 
         // Create submission
         const newSubmission: Omit<SubmissionDoc, 'id'> = {

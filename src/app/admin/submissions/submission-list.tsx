@@ -227,7 +227,7 @@ export default function SubmissionList({ submissions }: SubmissionListProps) {
                             <div className="text-right">
                                 <div className="font-semibold text-primary">+{submission.totalPoints} pts</div>
                                 <div className="text-xs text-muted-foreground">
-                                    Base: {submission.basePoints} | Bonus: {submission.bonusPoints}
+                                    Bonus total: {submission.bonusPoints}
                                 </div>
                             </div>
                         )}

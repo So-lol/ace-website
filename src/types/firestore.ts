@@ -1,6 +1,7 @@
 import { Timestamp } from 'firebase-admin/firestore'
 import type { UserRole, SubmissionStatus } from './enums'
 export type { UserRole, SubmissionStatus }
+export type BonusCategory = 'ACTIVITY' | 'EVENT' | 'WEEKLY'
 
 // ======================
 // ENUMS / UNIONS
@@ -100,6 +101,7 @@ export interface BonusActivityDoc {
     name: string
     description: string
     points: number
+    category?: BonusCategory
     isActive: boolean
     createdAt: Timestamp
     updatedAt: Timestamp

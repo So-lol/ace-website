@@ -17,13 +17,35 @@ import {
 } from 'lucide-react'
 import { submitPhotoSubmission } from '@/lib/actions/submissions'
 import { toast } from 'sonner'
-import { BonusActivity } from '@/types'
+import { BonusActivity, BonusCategory } from '@/types'
 
 interface SubmitFormProps {
     bonusActivities: BonusActivity[]
     weekNumber: number
     year: number
 }
+
+const BONUS_CATEGORY_SECTIONS: Array<{
+    category: BonusCategory
+    title: string
+    description: string
+}> = [
+    {
+        category: 'ACTIVITY',
+        title: 'Activity Bonus',
+        description: 'Extra points for activities and hangouts you completed together.',
+    },
+    {
+        category: 'EVENT',
+        title: 'Event Bonus',
+        description: 'Extra points for ACE events and special program gatherings.',
+    },
+    {
+        category: 'WEEKLY',
+        title: 'Weekly Bonuses',
+        description: 'Weekly bonus opportunities defined by admins.',
+    },
+]
 
 export default function SubmitForm({ bonusActivities, weekNumber, year }: SubmitFormProps) {
     // deadline calculation (next Sunday) could be added here or passed in
@@ -167,12 +189,11 @@ export default function SubmitForm({ bonusActivities, weekNumber, year }: Submit
         }
     }
 
-    const basePoints = 10
     const bonusPoints = selectedBonuses.reduce((acc, id) => {
         const bonus = bonusActivities.find(b => b.id === id)
         return acc + Number(bonus?.points || 0)
     }, 0)
-    const totalPoints = basePoints + bonusPoints
+    const totalPoints = bonusPoints
 
     // ... Render code ...
     return (
@@ -314,50 +335,70 @@ export default function SubmitForm({ bonusActivities, weekNumber, year }: Submit
                                             No active bonus activities for this week.
                                         </p>
                                     ) : (
-                                        bonusActivities.map((bonus) => {
-                                            const isSelected = selectedBonuses.includes(bonus.id)
+                                        BONUS_CATEGORY_SECTIONS.map((section) => {
+                                            const bonusesInCategory = bonusActivities.filter((bonus) => bonus.category === section.category)
+
+                                            if (bonusesInCategory.length === 0) {
+                                                return null
+                                            }
 
                                             return (
-                                            <div
-                                                key={bonus.id}
-                                                role="button"
-                                                tabIndex={0}
-                                                aria-pressed={isSelected}
-                                                data-testid={`bonus-option-${bonus.id}`}
-                                                className={`flex items-start gap-4 p-4 rounded-lg border-2 transition-colors cursor-pointer
-                        ${isSelected
-                                                        ? 'border-primary bg-primary/5'
-                                                        : 'border-transparent bg-muted/50 hover:bg-muted'
-                                                    }`}
-                                                onClick={(event) => handleBonusRowClick(event, bonus.id)}
-                                                onKeyDown={(event) => {
-                                                    if (event.key === 'Enter' || event.key === ' ') {
-                                                        event.preventDefault()
-                                                        toggleBonus(bonus.id)
-                                                    }
-                                                }}
-                                            >
-                                                <Checkbox
-                                                    id={bonus.id}
-                                                    checked={isSelected}
-                                                    aria-label={bonus.name}
-                                                    onClick={(event) => event.stopPropagation()}
-                                                    onCheckedChange={(checked) => setBonusSelection(bonus.id, checked === true)}
-                                                    className="mt-0.5"
-                                                />
-                                                <div className="flex-1">
-                                                    <div className="font-medium text-left">
-                                                        {bonus.name}
+                                                <div key={section.category} className="space-y-3">
+                                                    <div>
+                                                        <h3 className="font-semibold">{section.title}</h3>
+                                                        <p className="text-sm text-muted-foreground">{section.description}</p>
                                                     </div>
-                                                    <p className="text-left text-sm text-muted-foreground mt-1">
-                                                        {bonus.description}
-                                                    </p>
+
+                                                    <div className="space-y-3">
+                                                        {bonusesInCategory.map((bonus) => {
+                                                            const isSelected = selectedBonuses.includes(bonus.id)
+
+                                                            return (
+                                                                <div
+                                                                    key={bonus.id}
+                                                                    role="button"
+                                                                    tabIndex={0}
+                                                                    aria-pressed={isSelected}
+                                                                    data-testid={`bonus-option-${bonus.id}`}
+                                                                    className={`flex items-start gap-4 p-4 rounded-lg border-2 transition-colors cursor-pointer
+                        ${isSelected
+                                                                        ? 'border-primary bg-primary/5'
+                                                                        : 'border-transparent bg-muted/50 hover:bg-muted'
+                                                    }`}
+                                                                    onClick={(event) => handleBonusRowClick(event, bonus.id)}
+                                                                    onKeyDown={(event) => {
+                                                                        if (event.key === 'Enter' || event.key === ' ') {
+                                                                            event.preventDefault()
+                                                                            toggleBonus(bonus.id)
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    <Checkbox
+                                                                        id={bonus.id}
+                                                                        checked={isSelected}
+                                                                        aria-label={bonus.name}
+                                                                        onClick={(event) => event.stopPropagation()}
+                                                                        onCheckedChange={(checked) => setBonusSelection(bonus.id, checked === true)}
+                                                                        className="mt-0.5"
+                                                                    />
+                                                                    <div className="flex-1">
+                                                                        <div className="font-medium text-left">
+                                                                            {bonus.name}
+                                                                        </div>
+                                                                        <p className="text-left text-sm text-muted-foreground mt-1">
+                                                                            {bonus.description}
+                                                                        </p>
+                                                                    </div>
+                                                                    <div className="text-sm font-semibold text-primary">
+                                                                        +{bonus.points} pts
+                                                                    </div>
+                                                                </div>
+                                                            )
+                                                        })}
+                                                    </div>
                                                 </div>
-                                                <div className="text-sm font-semibold text-primary">
-                                                    +{bonus.points} pts
-                                                </div>
-                                            </div>
-                                        )})
+                                            )
+                                        })
                                     )}
                                 </div>
                             </CardContent>
@@ -366,14 +407,10 @@ export default function SubmitForm({ bonusActivities, weekNumber, year }: Submit
                         {/* Points Summary */}
                         <Card className="mb-6 bg-muted/30">
                             <CardContent className="pt-6">
-                                <div className="flex items-center justify-between mb-4">
-                                    <span className="text-muted-foreground">Base points</span>
-                                    <span className="font-medium">+{basePoints}</span>
-                                </div>
                                 {bonusPoints > 0 && (
                                     <div className="flex items-center justify-between mb-4">
                                         <span className="text-muted-foreground">
-                                            Bonus points ({selectedBonuses.length} activities)
+                                            Selected bonuses ({selectedBonuses.length})
                                         </span>
                                         <span className="font-medium text-[#FFD700]">+{bonusPoints}</span>
                                     </div>

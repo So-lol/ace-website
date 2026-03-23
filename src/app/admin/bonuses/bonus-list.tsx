@@ -43,12 +43,29 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { BonusActivity } from '@/types'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
+import { BonusActivity, BonusCategory } from '@/types'
 import { createBonusActivity, updateBonusActivity, deleteBonusActivity } from '@/lib/actions/bonuses'
 import { toast } from 'sonner'
 
 interface BonusListProps {
     bonuses: BonusActivity[]
+}
+
+const BONUS_CATEGORY_OPTIONS: Array<{ value: BonusCategory; label: string }> = [
+    { value: 'ACTIVITY', label: 'Activity Bonus' },
+    { value: 'EVENT', label: 'Event Bonus' },
+    { value: 'WEEKLY', label: 'Weekly Bonus' },
+]
+
+function getBonusCategoryLabel(category: BonusCategory) {
+    return BONUS_CATEGORY_OPTIONS.find((option) => option.value === category)?.label || 'Activity Bonus'
 }
 
 export default function BonusList({ bonuses }: BonusListProps) {
@@ -62,6 +79,7 @@ export default function BonusList({ bonuses }: BonusListProps) {
     const [name, setName] = useState('')
     const [description, setDescription] = useState('')
     const [points, setPoints] = useState(5)
+    const [category, setCategory] = useState<BonusCategory>('ACTIVITY')
     // const [isActive, setIsActive] = useState(true) // Default to true on create
 
     const activeCount = bonuses.filter(b => b.isActive).length
@@ -74,6 +92,7 @@ export default function BonusList({ bonuses }: BonusListProps) {
         setName('')
         setDescription('')
         setPoints(5)
+        setCategory('ACTIVITY')
         setEditingBonus(null)
     }
 
@@ -82,6 +101,7 @@ export default function BonusList({ bonuses }: BonusListProps) {
         setName(bonus.name)
         setDescription(bonus.description)
         setPoints(bonus.points)
+        setCategory(bonus.category)
         setIsEditOpen(true)
     }
 
@@ -89,7 +109,7 @@ export default function BonusList({ bonuses }: BonusListProps) {
         e.preventDefault()
         setIsLoading(true)
         try {
-            const result = await createBonusActivity({ name, description, points })
+            const result = await createBonusActivity({ name, description, points, category })
             if (result.success) {
                 toast.success('Bonus activity created')
                 setIsCreateOpen(false)
@@ -109,7 +129,7 @@ export default function BonusList({ bonuses }: BonusListProps) {
         if (!editingBonus) return
         setIsLoading(true)
         try {
-            const result = await updateBonusActivity(editingBonus.id, { name, description, points })
+            const result = await updateBonusActivity(editingBonus.id, { name, description, points, category })
             if (result.success) {
                 toast.success('Bonus activity updated')
                 setIsEditOpen(false)
@@ -238,6 +258,21 @@ export default function BonusList({ bonuses }: BonusListProps) {
                                         required
                                     />
                                 </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="category">Category</Label>
+                                    <Select value={category} onValueChange={(value) => setCategory(value as BonusCategory)}>
+                                        <SelectTrigger id="category" className="w-full">
+                                            <SelectValue placeholder="Select a category" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {BONUS_CATEGORY_OPTIONS.map((option) => (
+                                                <SelectItem key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </div>
                             <DialogFooter>
                                 <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
@@ -289,6 +324,21 @@ export default function BonusList({ bonuses }: BonusListProps) {
                                         required
                                     />
                                 </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="edit-category">Category</Label>
+                                    <Select value={category} onValueChange={(value) => setCategory(value as BonusCategory)}>
+                                        <SelectTrigger id="edit-category" className="w-full">
+                                            <SelectValue placeholder="Select a category" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {BONUS_CATEGORY_OPTIONS.map((option) => (
+                                                <SelectItem key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </div>
                             <DialogFooter>
                                 <Button type="button" variant="outline" onClick={() => setIsEditOpen(false)}>
@@ -312,6 +362,7 @@ export default function BonusList({ bonuses }: BonusListProps) {
                             <TableRow>
                                 <TableHead>Activity Name</TableHead>
                                 <TableHead>Description</TableHead>
+                                <TableHead className="text-center">Category</TableHead>
                                 <TableHead className="text-center">Points</TableHead>
                                 <TableHead className="text-center">Created</TableHead>
                                 <TableHead className="text-center">Status</TableHead>
@@ -321,7 +372,7 @@ export default function BonusList({ bonuses }: BonusListProps) {
                         <TableBody>
                             {filteredBonuses.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                                         No bonus activities found.
                                     </TableCell>
                                 </TableRow>
@@ -331,6 +382,11 @@ export default function BonusList({ bonuses }: BonusListProps) {
                                         <TableCell className="font-medium">{activity.name}</TableCell>
                                         <TableCell className="text-muted-foreground text-sm max-w-xs truncate">
                                             {activity.description}
+                                        </TableCell>
+                                        <TableCell className="text-center">
+                                            <Badge variant="outline">
+                                                {getBonusCategoryLabel(activity.category)}
+                                            </Badge>
                                         </TableCell>
                                         <TableCell className="text-center">
                                             <Badge variant="secondary" className="font-mono">

@@ -162,14 +162,14 @@ async function selectBonusActivity(page: Page, bonusName: string) {
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
         await bonusCard.click()
-        const totalText = await page.getByText('15 pts').count()
-        if (totalText > 0) {
+        const isPressed = await bonusCard.getAttribute('aria-pressed')
+        if (isPressed === 'true') {
             return
         }
         await page.waitForTimeout(250)
     }
 
-    await expect(page.getByText('15 pts')).toBeVisible()
+    await expect(bonusCard).toHaveAttribute('aria-pressed', 'true')
 }
 
 async function seedPhotoSubmissionFixture(request: APIRequestContext) {
@@ -252,6 +252,7 @@ async function seedPhotoSubmissionFixture(request: APIRequestContext) {
         name: 'Coffee Date',
         description: 'Grab coffee together.',
         points: 5,
+        category: 'ACTIVITY',
         isActive: true,
         createdAt: now,
         updatedAt: now,
@@ -307,8 +308,8 @@ test.describe.serial('photo submissions e2e audit', () => {
         const submissions = submissionsSnapshot.docs.map((doc) => doc.data())
         expect(submissions.every((submission) => submission.submitterId === mentor.uid)).toBeTruthy()
         expect(submissions.every((submission) => submission.status === 'PENDING')).toBeTruthy()
-        expect(submissions.some((submission) => submission.totalPoints === 15)).toBeTruthy()
-        expect(submissions.some((submission) => submission.totalPoints === 10)).toBeTruthy()
+        expect(submissions.some((submission) => submission.totalPoints === 5)).toBeTruthy()
+        expect(submissions.some((submission) => submission.totalPoints === 0)).toBeTruthy()
         expect(submissions.some((submission) => submission.bonusActivityIds?.[0] === bonusId)).toBeTruthy()
     })
 
@@ -386,7 +387,7 @@ test.describe.serial('photo submissions e2e audit', () => {
             await adminPage.getByRole('button', { name: 'Approve' }).click()
             await adminPage.reload({ waitUntil: 'domcontentloaded' })
             await adminPage.getByRole('tab', { name: /Approved \(1\)/ }).click()
-            await expect(adminPage.getByText('+15 pts')).toBeVisible()
+            await expect(adminPage.getByText('+5 pts')).toBeVisible()
 
             await adminPage.goto('/admin/media', { waitUntil: 'domcontentloaded' })
             await expect(adminPage.getByRole('heading', { name: 'Media Management' })).toBeVisible()
@@ -395,15 +396,15 @@ test.describe.serial('photo submissions e2e audit', () => {
 
             await participantPage.reload({ waitUntil: 'domcontentloaded' })
             await expect(participantPage.getByText(/^Approved$/).first()).toBeVisible()
-            await expect(participantPage.getByText('+15 pts')).toBeVisible()
+            await expect(participantPage.getByText('+5 pts')).toBeVisible()
 
             const pairing = await getDoc('pairings', pairingId)
             const family = await getDoc('families', familyId)
 
-            expect(pairing.totalPoints).toBe(15)
-            expect(pairing.weeklyPoints).toBe(15)
-            expect(family.totalPoints).toBe(15)
-            expect(family.weeklyPoints).toBe(15)
+            expect(pairing.totalPoints).toBe(5)
+            expect(pairing.weeklyPoints).toBe(5)
+            expect(family.totalPoints).toBe(5)
+            expect(family.weeklyPoints).toBe(5)
         } finally {
             await participantContext.close()
             await adminContext.close()
@@ -450,8 +451,8 @@ test.describe.serial('photo submissions e2e audit', () => {
 
             expect(pairing.totalPoints).toBe(0)
             expect(pairing.weeklyPoints).toBe(0)
-            expect(family.totalPoints).toBe(10)
-            expect(family.weeklyPoints).toBe(10)
+            expect(family.totalPoints).toBe(0)
+            expect(family.weeklyPoints).toBe(0)
         } finally {
             await familyHeadContext.close()
             await adminContext.close()
