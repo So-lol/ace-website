@@ -9,6 +9,12 @@ const AUTH_EMULATOR_URL = 'http://127.0.0.1:9099'
 const FIRESTORE_EMULATOR_URL = 'http://127.0.0.1:8080'
 const FIXTURE_IMAGE = path.resolve(process.cwd(), 'tests/fixtures/test-upload.png')
 const FIXTURE_IMAGE_BUFFER = fs.readFileSync(FIXTURE_IMAGE)
+const LARGE_IPHONE_STYLE_UPLOAD = {
+    name: 'IMG_4096.HEIC',
+    mimeType: 'image/heic',
+    // Intentionally invalid image bytes so browser-side normalization falls back to the original file.
+    buffer: Buffer.alloc(2 * 1024 * 1024, 7),
+}
 const IPHONE_STYLE_UPLOAD = {
     name: 'IMG_2048.HEIC',
     mimeType: 'image/heic',
@@ -311,9 +317,35 @@ test.describe.serial('photo submissions e2e audit', () => {
 
         await login(page, mentor.email, mentor.password)
         await page.goto('/dashboard/submit', { waitUntil: 'domcontentloaded' })
+        await page.waitForTimeout(500)
 
         await expect(page.getByRole('heading', { name: 'Submit Weekly Photo' })).toBeVisible()
         await page.locator('[data-testid="submission-file-input"]').setInputFiles([IPHONE_STYLE_UPLOAD])
+        await expect(page.getByRole('button', { name: 'Submit Photo' })).toBeEnabled()
+        await page.getByRole('button', { name: 'Submit Photo' }).click()
+
+        await expect(page).toHaveURL(/\/dashboard\/submissions/, { timeout: 20_000 })
+        await expect(page.getByText('Pending Review')).toBeVisible()
+
+        const submissionsSnapshot = await adminDb.collection('submissions').get()
+        expect(submissionsSnapshot.docs).toHaveLength(1)
+
+        const submission = submissionsSnapshot.docs[0].data()
+        expect(submission.submitterId).toBe(mentor.uid)
+        expect(submission.status).toBe('PENDING')
+        expect(submission.uploadState).toBe('UPLOADED')
+        expect(String(submission.imagePath)).toMatch(/\.(heic|heif|webp)$/i)
+    })
+
+    test('participant can upload a large iPhone-style photo file', async ({ page, request }) => {
+        const { mentor } = await seedPhotoSubmissionFixture(request)
+
+        await login(page, mentor.email, mentor.password)
+        await page.goto('/dashboard/submit', { waitUntil: 'domcontentloaded' })
+        await page.waitForTimeout(500)
+
+        await expect(page.getByRole('heading', { name: 'Submit Weekly Photo' })).toBeVisible()
+        await page.locator('[data-testid="submission-file-input"]').setInputFiles([LARGE_IPHONE_STYLE_UPLOAD])
         await expect(page.getByRole('button', { name: 'Submit Photo' })).toBeEnabled()
         await page.getByRole('button', { name: 'Submit Photo' }).click()
 
