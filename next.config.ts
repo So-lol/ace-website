@@ -6,6 +6,12 @@ const emulatorConnectSrc = useFirebaseEmulators
   : ""
 
 const nextConfig: NextConfig = {
+  experimental: {
+    serverActions: {
+      // The UI/server enforce a 10MB upload cap, so allow modest envelope overhead.
+      bodySizeLimit: '12mb',
+    },
+  },
   // Turbopack configuration is now top-level in Next.js 16
   // This explicitly sets the project root to avoid confusion with parent directory lockfiles
   images: {
