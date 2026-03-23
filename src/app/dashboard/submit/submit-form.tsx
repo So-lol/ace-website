@@ -118,12 +118,16 @@ export default function SubmitForm({ bonusActivities, weekNumber, year }: Submit
 
         try {
             const normalizedFile = await normalizeImageFile(selectedFile)
-            const submissionResult = await submitPhotoSubmission(
-                normalizedFile,
-                currentWeek.weekNumber,
-                currentWeek.year,
-                selectedBonuses
-            )
+            const formData = new FormData()
+            formData.set('file', normalizedFile)
+            formData.set('weekNumber', String(currentWeek.weekNumber))
+            formData.set('year', String(currentWeek.year))
+
+            selectedBonuses.forEach((bonusId) => {
+                formData.append('bonusActivityIds', bonusId)
+            })
+
+            const submissionResult = await submitPhotoSubmission(formData)
 
             if (!submissionResult.success) {
                 toast.error(submissionResult.error || 'Failed to create submission')
