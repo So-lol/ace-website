@@ -1,10 +1,11 @@
-import { getMediaLibrary, getMediaStats } from '@/lib/actions/media'
+import { getMediaDistributionOverview, getMediaLibrary, getMediaStats } from '@/lib/actions/media'
 import MediaList from './media-list'
 
 export default async function MediaAdminPage() {
-    const [media, stats] = await Promise.all([
+    const [media, stats, distribution] = await Promise.all([
         getMediaLibrary(),
-        getMediaStats()
+        getMediaStats(),
+        getMediaDistributionOverview(),
     ])
 
     return (
@@ -12,11 +13,11 @@ export default async function MediaAdminPage() {
             <div className="mb-6">
                 <h1 className="text-2xl font-bold">Media Management</h1>
                 <p className="text-muted-foreground">
-                    View submitted images, manage archive status, and enforce retention policy.
+                    View submitted images, manage archive status, run integrity checks, and sync files to Google Drive.
                 </p>
             </div>
 
-            <MediaList media={media} stats={stats} />
+            <MediaList media={media} stats={stats} distribution={distribution} />
         </div>
     )
 }

@@ -6,11 +6,29 @@ import { revalidatePath } from 'next/cache'
 import { FieldValue } from 'firebase-admin/firestore'
 import { SubmissionDoc, SubmissionStatus } from '@/types/firestore'
 import { logAuditAction } from '@/lib/actions/audit'
+import { getErrorMessage } from '@/lib/errors'
+import {
+    getGoogleDriveFolderSummary,
+    getGoogleDriveMediaDestination,
+    listGoogleDriveFolderFiles,
+    updateGoogleDriveFileMetadata,
+    uploadGoogleDriveFile,
+    type GoogleDriveFileSummary,
+    type GoogleDriveMediaDestination,
+} from '@/lib/google-drive'
 import {
     buildMediaReconciliationReport,
     MediaReconciliationIssue,
     MediaReconciliationReport,
 } from '@/lib/media-reconciliation-utils'
+import {
+    buildMediaDriveFileName,
+    describeMediaSyncScope,
+    inferMediaMimeType,
+    mediaMatchesSyncScope,
+    type MediaSyncCandidate,
+    type MediaSyncScope,
+} from '@/lib/media-distribution-utils'
 
 type MediaFilter = 'all' | 'active' | 'archived'
 
@@ -41,6 +59,96 @@ export interface MediaLibraryStats {
 
 export interface MediaStorageAuditReport extends MediaReconciliationReport {
     auditedAt: string
+}
+
+export interface MediaDistributionOverview {
+    googleDrive: GoogleDriveMediaDestination
+}
+
+export interface MediaGoogleDriveSyncSummary {
+    totalCandidates: number
+    created: number
+    updated: number
+    skipped: number
+    failed: number
+}
+
+export interface MediaGoogleDriveSyncResult {
+    success: boolean
+    partialFailure?: boolean
+    error?: string
+    scope?: MediaSyncScope
+    folderName?: string | null
+    folderUrl?: string | null
+    serviceAccountEmail?: string | null
+    summary?: MediaGoogleDriveSyncSummary
+    failures?: Array<{
+        submissionId: string
+        fileName: string
+        error: string
+    }>
+}
+
+function buildDriveAppProperties(item: MediaSyncCandidate) {
+    return {
+        aceSubmissionId: item.id,
+        aceImagePath: item.imagePath,
+        aceStatus: item.status,
+        aceArchived: item.isArchived ? '1' : '0',
+    }
+}
+
+function buildDriveFileDescription(item: MediaSyncCandidate) {
+    return `ACE submission ${item.id} by ${item.submitterName} for week ${item.weekNumber}, ${item.year}.`
+}
+
+function hasMatchingDriveMetadata(
+    driveFile: GoogleDriveFileSummary,
+    fileName: string,
+    appProperties: Record<string, string>
+) {
+    if (driveFile.name !== fileName) {
+        return false
+    }
+
+    const existingProperties = driveFile.appProperties || {}
+
+    return Object.entries(appProperties).every(([key, value]) => existingProperties[key] === value)
+}
+
+async function getMediaSyncCandidates(scope: MediaSyncScope): Promise<MediaSyncCandidate[]> {
+    const [submissionsSnapshot, usersSnapshot] = await Promise.all([
+        adminDb.collection('submissions').orderBy('createdAt', 'desc').get(),
+        adminDb.collection('users').get(),
+    ])
+
+    const userNames = new Map<string, string>()
+    usersSnapshot.forEach((doc) => {
+        const data = doc.data()
+        userNames.set(doc.id, String(data.name || 'Unknown'))
+    })
+
+    return submissionsSnapshot.docs
+        .map((doc) => {
+            const data = doc.data() as SubmissionDoc
+
+            if ((data.uploadState || 'UPLOADED') !== 'UPLOADED') {
+                return null
+            }
+
+            const candidate: MediaSyncCandidate = {
+                id: doc.id,
+                submitterName: userNames.get(data.submitterId) || 'Unknown',
+                weekNumber: data.weekNumber,
+                year: data.year,
+                status: data.status,
+                imagePath: data.imagePath,
+                isArchived: data.isArchived || false,
+            }
+
+            return mediaMatchesSyncScope(candidate, scope) ? candidate : null
+        })
+        .filter((item): item is MediaSyncCandidate => item !== null)
 }
 
 export async function getMediaLibrary(filter: MediaFilter = 'all'): Promise<MediaLibraryItem[]> {
@@ -269,6 +377,167 @@ export async function getMediaStats(): Promise<MediaLibraryStats> {
     } catch (error) {
         console.error('Error fetching media stats:', error)
         return { total: 0, active: 0, archived: 0, eligibleForDeletion: 0 }
+    }
+}
+
+export async function getMediaDistributionOverview(): Promise<MediaDistributionOverview> {
+    await requireAdmin()
+
+    return {
+        googleDrive: getGoogleDriveMediaDestination(),
+    }
+}
+
+export async function syncMediaToGoogleDrive(scope: MediaSyncScope): Promise<MediaGoogleDriveSyncResult> {
+    try {
+        const adminUser = await requireAdmin()
+        const destination = getGoogleDriveMediaDestination()
+
+        if (!destination.configured || !destination.folderId) {
+            return {
+                success: false,
+                error: destination.configurationError || 'Google Drive sync is not configured.',
+                serviceAccountEmail: destination.serviceAccountEmail,
+            }
+        }
+
+        const [folder, existingFiles, candidates] = await Promise.all([
+            getGoogleDriveFolderSummary(destination.folderId),
+            listGoogleDriveFolderFiles(destination.folderId),
+            getMediaSyncCandidates(scope),
+        ])
+
+        const existingFilesBySubmissionId = new Map<string, GoogleDriveFileSummary>()
+        existingFiles.forEach((file) => {
+            const submissionId = file.appProperties?.aceSubmissionId
+            if (submissionId && !existingFilesBySubmissionId.has(submissionId)) {
+                existingFilesBySubmissionId.set(submissionId, file)
+            }
+        })
+
+        let created = 0
+        let updated = 0
+        let skipped = 0
+        let failed = 0
+        const failures: Array<{ submissionId: string; fileName: string; error: string }> = []
+        const bucket = adminStorage.bucket()
+
+        for (const item of candidates) {
+            const fileName = buildMediaDriveFileName(item)
+            const appProperties = buildDriveAppProperties(item)
+            const existingFile = existingFilesBySubmissionId.get(item.id)
+
+            try {
+                if (existingFile && hasMatchingDriveMetadata(existingFile, fileName, appProperties)) {
+                    skipped++
+                    continue
+                }
+
+                if (existingFile && existingFile.appProperties?.aceImagePath === item.imagePath) {
+                    await updateGoogleDriveFileMetadata(existingFile.id, {
+                        name: fileName,
+                        description: buildDriveFileDescription(item),
+                        appProperties,
+                    })
+                    updated++
+                    continue
+                }
+
+                const [bytes] = await bucket.file(item.imagePath).download()
+
+                await uploadGoogleDriveFile({
+                    fileId: existingFile?.id,
+                    fileName,
+                    folderId: destination.folderId,
+                    contentType: inferMediaMimeType(item.imagePath),
+                    bytes,
+                    metadata: {
+                        name: fileName,
+                        description: buildDriveFileDescription(item),
+                        appProperties,
+                    },
+                })
+
+                if (existingFile) {
+                    updated++
+                } else {
+                    created++
+                }
+            } catch (error) {
+                failed++
+                failures.push({
+                    submissionId: item.id,
+                    fileName,
+                    error: getErrorMessage(error, 'Failed to sync file to Google Drive'),
+                })
+            }
+        }
+
+        const summary = {
+            totalCandidates: candidates.length,
+            created,
+            updated,
+            skipped,
+            failed,
+        }
+        const partialFailure = failed > 0
+        const success = failed < candidates.length || candidates.length === 0
+        const folderUrl = folder.webViewLink || destination.folderUrl
+
+        await logAuditAction(
+            adminUser.id,
+            'MEDIA_SYNCED_TO_GOOGLE_DRIVE',
+            'SUBMISSION',
+            destination.folderId,
+            partialFailure
+                ? `Google Drive sync completed with ${failed} failure(s) for ${describeMediaSyncScope(scope)}.`
+                : `Google Drive sync completed for ${describeMediaSyncScope(scope)}.`,
+            {
+                actorName: adminUser.name,
+                scope,
+                scopeLabel: describeMediaSyncScope(scope),
+                folderId: destination.folderId,
+                folderName: folder.name,
+                folderUrl,
+                serviceAccountEmail: destination.serviceAccountEmail,
+                summary,
+                failures: failures.slice(0, 25),
+            },
+            adminUser.email
+        )
+
+        revalidatePath('/admin/media')
+
+        if (!success) {
+            return {
+                success: false,
+                error: 'Google Drive sync failed for every selected submission.',
+                partialFailure: true,
+                scope,
+                folderName: folder.name,
+                folderUrl,
+                serviceAccountEmail: destination.serviceAccountEmail,
+                summary,
+                failures,
+            }
+        }
+
+        return {
+            success: true,
+            partialFailure,
+            scope,
+            folderName: folder.name,
+            folderUrl,
+            serviceAccountEmail: destination.serviceAccountEmail,
+            summary,
+            failures,
+        }
+    } catch (error) {
+        console.error('Error syncing media to Google Drive:', error)
+        return {
+            success: false,
+            error: getErrorMessage(error, 'Failed to sync media to Google Drive'),
+        }
     }
 }
 
