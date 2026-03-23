@@ -5,9 +5,13 @@ import { NavbarWithAuthClient, Footer } from '@/components/layout'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { CheckCircle2, ArrowLeft } from 'lucide-react'
+import { CheckCircle2, ArrowLeft, Lock } from 'lucide-react'
 import { getAuthenticatedUser } from '@/lib/auth-helpers'
-import { getCurrentAceApplicationStatus } from '@/lib/actions/ace-applications'
+import {
+    getCurrentAceApplicationStatus,
+    getAceApplicationSettings,
+} from '@/lib/actions/ace-applications'
+import { areAceApplicationsOpen } from '@/lib/ace-application-settings'
 import { ApplyFormPage } from './apply-form-page'
 
 export const metadata: Metadata = {
@@ -30,7 +34,10 @@ export default async function ApplyPage() {
         redirect('/login?redirect=/apply')
     }
 
-    const applicationStatus = await getCurrentAceApplicationStatus()
+    const [applicationStatus, settings] = await Promise.all([
+        getCurrentAceApplicationStatus(),
+        getAceApplicationSettings(),
+    ])
 
     if (applicationStatus.hasApplied && applicationStatus.application) {
         const submittedAt = new Date(applicationStatus.application.createdAtIso)
@@ -66,6 +73,11 @@ export default async function ApplyPage() {
                                     <p className="text-sm text-muted-foreground">
                                         Submitted on {submittedAt.toLocaleString()}
                                     </p>
+                                    {settings.revealAt && (
+                                        <p className="text-sm text-muted-foreground">
+                                            Reveal details: {settings.revealAt.toLocaleString()}
+                                        </p>
+                                    )}
                                 </div>
                                 <div className="flex gap-4 justify-center">
                                     <Link href="/dashboard">
@@ -85,5 +97,59 @@ export default async function ApplyPage() {
         )
     }
 
-    return <ApplyFormPage />
+    if (!areAceApplicationsOpen(settings)) {
+        return (
+            <div className="min-h-screen flex flex-col">
+                <NavbarWithAuthClient />
+
+                <main className="flex-1 py-12">
+                    <div className="container mx-auto px-4 max-w-2xl">
+                        <div className="mb-6">
+                            <Link href="/dashboard">
+                                <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground -ml-2">
+                                    <ArrowLeft className="w-4 h-4" />
+                                    Back to Dashboard
+                                </Button>
+                            </Link>
+                        </div>
+
+                        <Card className="doraemon-shadow">
+                            <CardContent className="p-8 text-center">
+                                <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center mx-auto mb-6">
+                                    <Lock className="w-10 h-10 text-muted-foreground" />
+                                </div>
+                                <h1 className="text-3xl font-bold mb-3">Applications are closed</h1>
+                                <p className="text-muted-foreground mb-4">
+                                    ACE applications are not accepting new submissions right now.
+                                </p>
+                                {settings.deadlineAt && (
+                                    <p className="text-sm text-muted-foreground mb-8">
+                                        Latest deadline: {settings.deadlineAt.toLocaleString()}
+                                    </p>
+                                )}
+                                <div className="flex gap-4 justify-center">
+                                    <Link href="/dashboard">
+                                        <Button className="doraemon-gradient text-white">Go to Dashboard</Button>
+                                    </Link>
+                                    <Link href="/">
+                                        <Button variant="outline">Back to Home</Button>
+                                    </Link>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
+                </main>
+
+                <Footer />
+            </div>
+        )
+    }
+
+    return (
+        <ApplyFormPage
+            userId={user.id}
+            deadlineAtIso={settings.deadlineAt?.toISOString() ?? null}
+            revealAtIso={settings.revealAt?.toISOString() ?? null}
+        />
+    )
 }

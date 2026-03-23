@@ -3,9 +3,9 @@
 import { requireAdmin, getAuthenticatedUser } from '@/lib/auth-helpers'
 import { adminDb, adminAuth, deleteFirebaseUser, createFirebaseUser, deleteFile } from '@/lib/firebase-admin'
 import { revalidatePath } from 'next/cache'
-import { UserDoc, FamilyDoc } from '@/types/firestore'
+import { UserDoc, FamilyDoc, AceApplicationDoc, PairingDoc } from '@/types/firestore'
 import { logAuditAction } from '@/lib/actions/audit'
-import { UserWithFamily, UserRole, Family } from '@/types/index'
+import { UserWithFamily, UserRole, Family, AceRole } from '@/types/index'
 import { Timestamp } from 'firebase-admin/firestore'
 import { normalizeEmail } from '@/lib/auth-utils'
 
@@ -24,6 +24,9 @@ type ActionError = {
 
 type UserProfileResult = UserDoc & {
     id: string
+    aceRole: AceRole | null
+    dashboardRoleLabel: string
+    isFamilyHead: boolean
     family: {
         id: string
         name?: string
@@ -31,9 +34,20 @@ type UserProfileResult = UserDoc & {
     } | null
     pairing: {
         id: string
-        mentorName?: string
+        mentorId: string | null
+        mentorName: string | null
+        menteeIds: string[]
         mentees: string[]
     } | null
+}
+
+function getDashboardRoleLabel(userRole: UserRole, aceRole: AceRole | null, isFamilyHead: boolean) {
+    if (aceRole === 'FAMILY_HEAD' || isFamilyHead) return 'Family Head'
+    if (aceRole === 'EM') return 'Mentee'
+    if (aceRole === 'ANH' || aceRole === 'CHI' || aceRole === 'CHANH') return 'Mentor'
+    if (userRole === 'MENTOR') return 'Mentor'
+    if (userRole === 'MENTEE') return 'Mentee'
+    return 'Participant'
 }
 
 /**
@@ -180,57 +194,100 @@ export async function getUserProfile(userId: string): Promise<UserProfileResult 
         const userData = userDoc.data() as UserDoc
         let family: UserProfileResult['family'] = null
         let pairing: UserProfileResult['pairing'] = null
+        let aceRole: AceRole | null = null
 
-        // Fetch Family
-        if (userData.familyId) {
-            const familyDoc = await adminDb.collection('families').doc(userData.familyId).get()
-            if (familyDoc.exists) {
-                family = { id: familyDoc.id, ...familyDoc.data() }
+        const applicationByApplicantIdPromise = adminDb.collection('aceApplications')
+            .where('applicantId', '==', userId)
+            .limit(1)
+            .get()
+
+        const applicationByEmailPromise = adminDb.collection('aceApplications')
+            .where('email', '==', userData.email.trim().toLowerCase())
+            .limit(1)
+            .get()
+
+        const familyByIdPromise = userData.familyId
+            ? adminDb.collection('families').doc(userData.familyId).get()
+            : Promise.resolve(null)
+
+        const [applicationByApplicantIdSnap, applicationByEmailSnap, familyByIdDoc, familyMemberSnap, familyHeadSnap, legacyFamilyHeadSnap, familyAuntUncleSnap, pairingAsMentorSnap, pairingAsMenteeSnap, familyLeaderboardSnap] = await Promise.all([
+            applicationByApplicantIdPromise,
+            applicationByEmailPromise,
+            familyByIdPromise,
+            adminDb.collection('families').where('memberIds', 'array-contains', userId).limit(1).get(),
+            adminDb.collection('families').where('familyHeadIds', 'array-contains', userId).limit(1).get(),
+            adminDb.collection('families').where('familyHeadId', '==', userId).limit(1).get(),
+            adminDb.collection('families').where('auntUncleIds', 'array-contains', userId).limit(1).get(),
+            adminDb.collection('pairings').where('mentorId', '==', userId).limit(1).get(),
+            adminDb.collection('pairings').where('menteeIds', 'array-contains', userId).limit(1).get(),
+            adminDb.collection('families').orderBy('totalPoints', 'desc').get()
+        ])
+
+        if (!applicationByApplicantIdSnap.empty) {
+            aceRole = (applicationByApplicantIdSnap.docs[0].data() as AceApplicationDoc).role
+        } else if (!applicationByEmailSnap.empty) {
+            aceRole = (applicationByEmailSnap.docs[0].data() as AceApplicationDoc).role
+        }
+
+        const resolvedFamilyDoc =
+            (familyByIdDoc && familyByIdDoc.exists ? familyByIdDoc : null) ||
+            (!familyHeadSnap.empty ? familyHeadSnap.docs[0] : null) ||
+            (!legacyFamilyHeadSnap.empty ? legacyFamilyHeadSnap.docs[0] : null) ||
+            (!familyMemberSnap.empty ? familyMemberSnap.docs[0] : null) ||
+            (!familyAuntUncleSnap.empty ? familyAuntUncleSnap.docs[0] : null)
+
+        if (resolvedFamilyDoc) {
+            const familyData = resolvedFamilyDoc.data() as FamilyDoc
+            const familyRank = familyLeaderboardSnap.docs.findIndex(doc => doc.id === resolvedFamilyDoc.id) + 1
+            family = {
+                id: resolvedFamilyDoc.id,
+                name: familyData.name,
+                rank: familyRank > 0 ? familyRank : undefined
             }
         }
 
-        // Fetch Pairing (Mentor or Mentee)
-        // First check if mentor
-        let pairingSnap = await adminDb.collection('pairings').where('mentorId', '==', userId).limit(1).get()
-
-        if (pairingSnap.empty) {
-            // Check if mentee
-            pairingSnap = await adminDb.collection('pairings').where('menteeIds', 'array-contains', userId).limit(1).get()
-        }
-
+        const pairingSnap = !pairingAsMentorSnap.empty ? pairingAsMentorSnap : pairingAsMenteeSnap
         if (!pairingSnap.empty) {
             const pDoc = pairingSnap.docs[0]
-            const pData = pDoc.data()
+            const pData = pDoc.data() as PairingDoc
+            const menteeIds = Array.isArray(pData.menteeIds) ? pData.menteeIds : []
+            const userIdsToFetch = [pData.mentorId, ...menteeIds].filter(Boolean)
+            const usersById = new Map<string, string>()
 
-            // Fetch mentees names for display
-            const menteeIds = pData.menteeIds || []
-            const mentees: string[] = []
-
-            if (menteeIds.length > 0) {
-                // Fetch mentees in parallel
-                // Use Promise.all
-                // Firestore 'in' query supports up to 10
-                if (menteeIds.length > 0) {
-                    const menteesSnap = await adminDb.collection('users').where('uid', 'in', menteeIds).get()
-                    menteesSnap.forEach(doc => {
-                        const d = doc.data()
-                        if (d.name) mentees.push(d.name)
-                    })
-                }
+            if (userIdsToFetch.length > 0) {
+                const userSnaps = await Promise.all(
+                    userIdsToFetch.map(id => adminDb.collection('users').doc(id).get())
+                )
+                userSnaps.forEach(doc => {
+                    if (doc.exists) {
+                        const data = doc.data() as UserDoc
+                        usersById.set(doc.id, data.name || 'Unknown')
+                    }
+                })
             }
 
             pairing = {
                 id: pDoc.id,
-                mentorName: pData.mentorName,
-                mentees: mentees
+                mentorId: pData.mentorId || null,
+                mentorName: pData.mentorId ? (usersById.get(pData.mentorId) || null) : null,
+                menteeIds,
+                mentees: menteeIds.map(id => usersById.get(id) || 'Unknown')
             }
         }
+
+        const isFamilyHead =
+            aceRole === 'FAMILY_HEAD' ||
+            (!familyHeadSnap.empty && familyHeadSnap.docs[0].id === family?.id) ||
+            (!legacyFamilyHeadSnap.empty && legacyFamilyHeadSnap.docs[0].id === family?.id)
 
         return {
             ...userData,
             id: userDoc.id,
             family,
-            pairing
+            pairing,
+            aceRole,
+            dashboardRoleLabel: getDashboardRoleLabel(userData.role, aceRole, isFamilyHead),
+            isFamilyHead
         }
     } catch (error) {
         console.error('Error fetching user profile:', error)
@@ -281,6 +338,16 @@ export async function deleteUser(userId: string) {
 
         // 0. Delete user's application(s)
         const userDoc = await adminDb.collection('users').doc(userId).get()
+        const applicationIdsToDelete = new Set<string>()
+
+        const appsByApplicantIdSnap = await adminDb.collection('aceApplications')
+            .where('applicantId', '==', userId)
+            .get()
+
+        for (const appDoc of appsByApplicantIdSnap.docs) {
+            applicationIdsToDelete.add(appDoc.id)
+        }
+
         if (userDoc.exists) {
             const userEmail = userDoc.data()?.email
             if (userEmail) {
@@ -289,9 +356,13 @@ export async function deleteUser(userId: string) {
                     .get()
 
                 for (const appDoc of appsSnap.docs) {
-                    await appDoc.ref.delete()
+                    applicationIdsToDelete.add(appDoc.id)
                 }
             }
+        }
+
+        for (const applicationId of applicationIdsToDelete) {
+            await adminDb.collection('aceApplications').doc(applicationId).delete()
         }
 
         // 1. Delete user's submissions and their images from storage

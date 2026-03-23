@@ -119,6 +119,15 @@ export interface AuditLogDoc {
     metadata?: Record<string, unknown>
 }
 
+// settings/program
+export interface ProgramSettingsDoc {
+    programStartDate: string
+    weekCountStartDate: string
+    updatedBy: string
+    createdAt: Timestamp
+    updatedAt: Timestamp
+}
+
 // aceApplications/{id}
 export type AceRole = 'FAMILY_HEAD' | 'ANH' | 'CHI' | 'CHANH' | 'EM'
 
@@ -178,5 +187,13 @@ export interface AceApplicationDoc {
     selfIntro: string
 
     createdAt: Timestamp
+    updatedAt: Timestamp
+}
+
+// appSettings/aceApplications
+export interface AceApplicationSettingsDoc {
+    isOpen: boolean
+    deadlineAt: Timestamp | null
+    revealAt: Timestamp | null
     updatedAt: Timestamp
 }

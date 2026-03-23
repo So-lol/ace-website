@@ -32,9 +32,25 @@ interface Family {
 
 interface AddUserFormProps {
     families: Family[]
+    triggerLabel?: string
+    title?: string
+    description?: string
+    defaultRole?: 'ADMIN' | 'MENTOR' | 'MENTEE'
+    onSuccess?: () => void
+    buttonVariant?: 'default' | 'outline' | 'secondary'
+    buttonClassName?: string
 }
 
-export default function AddUserForm({ families }: AddUserFormProps) {
+export default function AddUserForm({
+    families,
+    triggerLabel = 'Add User',
+    title = 'Add New User',
+    description = 'Create a new user account. They will be able to log in immediately.',
+    defaultRole = 'MENTEE',
+    onSuccess,
+    buttonVariant = 'default',
+    buttonClassName,
+}: AddUserFormProps) {
     const router = useRouter()
     const [open, setOpen] = useState(false)
     const [isLoading, setIsLoading] = useState(false)
@@ -42,14 +58,14 @@ export default function AddUserForm({ families }: AddUserFormProps) {
     const [name, setName] = useState('')
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
-    const [role, setRole] = useState<'ADMIN' | 'MENTOR' | 'MENTEE'>('MENTEE')
+    const [role, setRole] = useState<'ADMIN' | 'MENTOR' | 'MENTEE'>(defaultRole)
     const [familyId, setFamilyId] = useState<string>('')
 
     const resetForm = () => {
         setName('')
         setEmail('')
         setPassword('')
-        setRole('MENTEE')
+        setRole(defaultRole)
         setFamilyId('')
     }
 
@@ -71,6 +87,7 @@ export default function AddUserForm({ families }: AddUserFormProps) {
                 setOpen(false)
                 resetForm()
                 router.refresh()
+                onSuccess?.()
             } else {
                 toast.error(result.error || 'Failed to create user')
             }
@@ -84,17 +101,17 @@ export default function AddUserForm({ families }: AddUserFormProps) {
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button className="gap-2">
+                <Button variant={buttonVariant} className={buttonClassName ?? 'gap-2'}>
                     <UserCog className="w-4 h-4" />
-                    Add User
+                    {triggerLabel}
                 </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
                 <form onSubmit={handleSubmit}>
                     <DialogHeader>
-                        <DialogTitle>Add New User</DialogTitle>
+                        <DialogTitle>{title}</DialogTitle>
                         <DialogDescription>
-                            Create a new user account. They will be able to log in immediately.
+                            {description}
                         </DialogDescription>
                     </DialogHeader>
 

@@ -44,6 +44,7 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { toast } from 'sonner'
 import { createPairing, deletePairing, updatePairing } from '@/lib/actions/pairings'
+import AddUserForm from '@/app/admin/users/add-user-form'
 
 interface PairingUser {
     id: string
@@ -202,7 +203,7 @@ export default function PairingList({ pairings, families, users }: PairingListPr
 
     // Filter users by role and availability
     const availableMentors = users
-        .filter(u => u.role === 'MENTOR')
+        .filter(u => u.role === 'MENTOR' || u.role === 'ADMIN')
         .sort((a, b) => a.name.localeCompare(b.name))
 
     const availableMentees = users
@@ -247,95 +248,130 @@ export default function PairingList({ pairings, families, users }: PairingListPr
                     />
                 </div>
 
-                <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-                    <DialogTrigger asChild>
-                        <Button className="gap-2" onClick={resetForm}>
-                            <Plus className="w-4 h-4" />
-                            Create Pairing
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-2xl">
-                        <DialogHeader>
-                            <DialogTitle>Create New Pairing</DialogTitle>
-                            <DialogDescription>
-                                Assign a mentor and mentees to a family group.
-                            </DialogDescription>
-                        </DialogHeader>
-                        <form onSubmit={handleCreate}>
-                            <div className="space-y-4 py-4">
-                                {/* Family Selection */}
-                                <div className="space-y-2">
-                                    <Label>Family</Label>
-                                    <Select value={selectedFamilyId} onValueChange={setSelectedFamilyId} required>
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select a family" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {families.map(f => (
-                                                <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
+                <div className="flex items-center gap-2">
+                    <AddUserForm
+                        families={families}
+                        triggerLabel="Add User"
+                        title="Add User for Pairings"
+                        description="Create an account for someone who did not submit an application so they can be assigned to a family or pairing."
+                        buttonVariant="outline"
+                        buttonClassName="gap-2"
+                    />
 
-                                {/* Mentor Selection */}
-                                <div className="space-y-2">
-                                    <Label>Mentor</Label>
-                                    <Select value={selectedMentorId} onValueChange={setSelectedMentorId} required>
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select a mentor" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {availableMentors.map((u) => (
-                                                <SelectItem key={u.id} value={u.id}>
-                                                    {u.name} ({u.email})
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                {/* Mentees Selection (Custom Multi-select) */}
-                                <div className="space-y-2">
-                                    <Label>Mentees</Label>
-                                    <div className="border rounded-md p-4 max-h-60 overflow-y-auto space-y-2">
-                                        {availableMentees.length === 0 ? (
-                                            <p className="text-sm text-muted-foreground text-center py-4">All eligible mentees have been assigned to pairings</p>
-                                        ) : (
-                                            availableMentees.map((u) => (
-                                                <div key={u.id} className="flex items-center space-x-2">
-                                                    <Checkbox
-                                                        id={`mentee-${u.id}`}
-                                                        checked={selectedMenteeIds.includes(u.id)}
-                                                        onCheckedChange={() => toggleMenteeSelection(u.id)}
-                                                    />
-                                                    <label
-                                                        htmlFor={`mentee-${u.id}`}
-                                                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                                                    >
-                                                        {u.name} <span className="text-muted-foreground text-xs">({u.email})</span>
-                                                    </label>
-                                                </div>
-                                            ))
-                                        )}
+                    <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+                        <DialogTrigger asChild>
+                            <Button className="gap-2" onClick={resetForm}>
+                                <Plus className="w-4 h-4" />
+                                Create Pairing
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-2xl">
+                            <DialogHeader>
+                                <DialogTitle>Create New Pairing</DialogTitle>
+                                <DialogDescription>
+                                    Assign a mentor and mentees to a family group.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <form onSubmit={handleCreate}>
+                                <div className="space-y-4 py-4">
+                                    {/* Family Selection */}
+                                    <div className="space-y-2">
+                                        <Label>Family</Label>
+                                        <Select value={selectedFamilyId} onValueChange={setSelectedFamilyId} required>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select a family" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {families.map(f => (
+                                                    <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
                                     </div>
-                                    <p className="text-xs text-muted-foreground">
-                                        Selected: {selectedMenteeIds.length} users
-                                    </p>
+
+                                    {/* Mentor Selection */}
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <Label>Mentor</Label>
+                                            <AddUserForm
+                                                families={families}
+                                                defaultRole="MENTOR"
+                                                triggerLabel="Add Mentor"
+                                                title="Add Mentor"
+                                                description="Create a mentor account for someone who did not submit an application, then select them for this pairing."
+                                                buttonVariant="outline"
+                                                buttonClassName="gap-2"
+                                            />
+                                        </div>
+                                        <Select value={selectedMentorId} onValueChange={setSelectedMentorId} required>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select a mentor" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {availableMentors.map((u) => (
+                                                    <SelectItem key={u.id} value={u.id}>
+                                                        {u.name} ({u.email})
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    {/* Mentees Selection (Custom Multi-select) */}
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <Label>Mentees</Label>
+                                            <AddUserForm
+                                                families={families}
+                                                defaultRole="MENTEE"
+                                                triggerLabel="Add Mentee"
+                                                title="Add Mentee"
+                                                description="Create a mentee account for someone who did not submit an application, then add them to this pairing."
+                                                buttonVariant="outline"
+                                                buttonClassName="gap-2"
+                                            />
+                                        </div>
+                                        <div className="border rounded-md p-4 max-h-60 overflow-y-auto space-y-2">
+                                            {availableMentees.length === 0 ? (
+                                                <div className="text-sm text-muted-foreground text-center py-4">
+                                                    All eligible mentees have been assigned to pairings. Add another mentee if you need someone new.
+                                                </div>
+                                            ) : (
+                                                availableMentees.map((u) => (
+                                                    <div key={u.id} className="flex items-center space-x-2">
+                                                        <Checkbox
+                                                            id={`mentee-${u.id}`}
+                                                            checked={selectedMenteeIds.includes(u.id)}
+                                                            onCheckedChange={() => toggleMenteeSelection(u.id)}
+                                                        />
+                                                        <label
+                                                            htmlFor={`mentee-${u.id}`}
+                                                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                                                        >
+                                                            {u.name} <span className="text-muted-foreground text-xs">({u.email})</span>
+                                                        </label>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">
+                                            Selected: {selectedMenteeIds.length} users
+                                        </p>
+                                    </div>
                                 </div>
-                            </div>
-                            <DialogFooter>
-                                <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
-                                    Cancel
-                                </Button>
-                                <Button type="submit" disabled={isLoading}>
-                                    {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                                    Create Pairing
-                                </Button>
-                            </DialogFooter>
-                        </form>
-                    </DialogContent>
-                </Dialog>
+                                <DialogFooter>
+                                    <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
+                                        Cancel
+                                    </Button>
+                                    <Button type="submit" disabled={isLoading}>
+                                        {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                                        Create Pairing
+                                    </Button>
+                                </DialogFooter>
+                            </form>
+                        </DialogContent>
+                    </Dialog>
+                </div>
 
                 {/* Edit Pairing Dialog */}
                 <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
