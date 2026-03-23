@@ -16,7 +16,8 @@ import {
     Clock,
     CheckCircle2,
     AlertCircle,
-    Image as ImageIcon
+    Image as ImageIcon,
+    LifeBuoy
 } from 'lucide-react'
 import { getAdminStats } from '@/lib/actions/stats'
 import { getSubmissions } from '@/lib/actions/submissions'
@@ -228,6 +229,12 @@ export default async function AdminDashboardPage() {
                                     <Button variant="outline" className="w-full h-auto py-4 flex-col gap-2">
                                         <ImageIcon className="w-5 h-5" />
                                         <span className="text-xs">Media Management</span>
+                                    </Button>
+                                </Link>
+                                <Link href="/admin/help">
+                                    <Button variant="outline" className="w-full h-auto py-4 flex-col gap-2">
+                                        <LifeBuoy className="w-5 h-5" />
+                                        <span className="text-xs">Help Requests</span>
                                     </Button>
                                 </Link>
                             </CardContent>

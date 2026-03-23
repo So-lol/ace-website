@@ -18,6 +18,7 @@ import {
     Trophy,
     Megaphone,
     Info,
+    LifeBuoy,
     LogIn,
     LogOut,
     LayoutDashboard,
@@ -34,6 +35,7 @@ const navigation = [
     { name: 'Leaderboard', href: '/leaderboard', icon: Trophy },
     { name: 'Announcements', href: '/announcements', icon: Megaphone },
     { name: 'About ACE', href: '/about', icon: Info },
+    { name: 'Help', href: '/help', icon: LifeBuoy },
 ]
 
 interface NavbarProps {

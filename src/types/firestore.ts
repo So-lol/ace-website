@@ -80,6 +80,17 @@ export interface SubmissionDoc {
     updatedAt: Timestamp
 }
 
+// helpRequests/{id}
+export interface HelpRequestDoc {
+    id: string
+    submitterId: string
+    title: string
+    details?: string
+    imagePath: string
+    createdAt: Timestamp
+    updatedAt: Timestamp
+}
+
 // bonusAttempts/{id} - Optional, if we need detailed tracking per bonus
 // For now, simpler to just store IDs in submission or a subcollection
 

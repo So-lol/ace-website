@@ -20,7 +20,8 @@ import {
     ChevronRight,
     Image,
     ClipboardList,
-    CalendarDays
+    CalendarDays,
+    LifeBuoy
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -40,6 +41,7 @@ const adminNavItems = [
     { name: 'Announcements', href: '/admin/announcements', icon: Megaphone },
     { divider: true },
     { name: 'Submissions', href: '/admin/submissions', icon: FileImage },
+    { name: 'Help Requests', href: '/admin/help', icon: LifeBuoy },
     { name: 'Media', href: '/admin/media', icon: Image },
     { name: 'Points', href: '/admin/points', icon: Calculator },
     { name: 'Program Settings', href: '/admin/settings', icon: CalendarDays },
