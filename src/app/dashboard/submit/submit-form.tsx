@@ -136,7 +136,7 @@ export default function SubmitForm({ bonusActivities, weekNumber, year }: Submit
             router.refresh()
         } catch (error) {
             console.error('Submission error:', error)
-            toast.error('An unexpected error occurred. Please try again.')
+            toast.error(getSubmissionErrorMessage(error))
         } finally {
             setIsSubmitting(false)
         }
@@ -211,7 +211,7 @@ export default function SubmitForm({ bonusActivities, weekNumber, year }: Submit
                                         <input
                                             ref={fileInputRef}
                                             type="file"
-                                            accept=".jpg,.jpeg,.png,.heic,.webp,image/jpeg,image/png,image/heic,image/webp"
+                                            accept=".jpg,.jpeg,.png,.heic,.heif,.webp,.mov,.mp4,image/jpeg,image/png,image/heic,image/heif,image/webp,video/quicktime,video/mp4"
                                             onChange={handleFileInputChange}
                                             className="hidden"
                                             data-testid="submission-file-input"
@@ -232,18 +232,28 @@ export default function SubmitForm({ bonusActivities, weekNumber, year }: Submit
                                             Choose File
                                         </Button>
                                         <p className="text-xs text-muted-foreground">
-                                            JPG, PNG, HEIC, or WebP • Max 10MB
+                                            JPG, PNG, HEIC, HEIF, WebP, MOV, or MP4 • Max 10MB
                                         </p>
                                     </div>
                                 ) : (
                                     <div className="relative">
                                         <div className="relative aspect-video rounded-xl overflow-hidden bg-muted">
-                                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                                            <img
-                                                src={preview || ''}
-                                                alt="Preview"
-                                                className="w-full h-full object-cover"
-                                            />
+                                            {isImagePreviewable(file) && preview ? (
+                                                // eslint-disable-next-line @next/next/no-img-element
+                                                <img
+                                                    src={preview}
+                                                    alt="Preview"
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            ) : (
+                                                <div className="flex h-full w-full items-center justify-center">
+                                                    <div className="text-center text-muted-foreground">
+                                                        <ImageIcon className="mx-auto mb-2 h-10 w-10" />
+                                                        <div className="text-sm font-medium">File ready to upload</div>
+                                                        <div className="text-xs">A flat image will be generated during submission.</div>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                         <button
                                             type="button"
@@ -383,15 +393,19 @@ async function normalizeImageFile(file: File): Promise<File> {
             return file
         }
 
-        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+        if (!shouldNormalizeUpload(file)) {
             return file
         }
 
-        const imageBitmap = await createImageBitmap(file)
+        const imageSource = await loadImageSource(file)
+        if (!imageSource) {
+            return file
+        }
+
         const maxDimension = 1600
-        const scale = Math.min(1, maxDimension / Math.max(imageBitmap.width, imageBitmap.height))
-        const width = Math.max(1, Math.round(imageBitmap.width * scale))
-        const height = Math.max(1, Math.round(imageBitmap.height * scale))
+        const scale = Math.min(1, maxDimension / Math.max(imageSource.width, imageSource.height))
+        const width = Math.max(1, Math.round(imageSource.width * scale))
+        const height = Math.max(1, Math.round(imageSource.height * scale))
         const canvas = document.createElement('canvas')
 
         canvas.width = width
@@ -399,18 +413,22 @@ async function normalizeImageFile(file: File): Promise<File> {
 
         const context = canvas.getContext('2d')
         if (!context) {
-            imageBitmap.close()
+            imageSource.dispose()
             return file
         }
 
-        context.drawImage(imageBitmap, 0, 0, width, height)
-        imageBitmap.close()
+        imageSource.draw(context, width, height)
+        imageSource.dispose()
 
         const compressedBlob = await new Promise<Blob | null>((resolve) => {
             canvas.toBlob((blob) => resolve(blob), 'image/webp', 0.82)
         })
 
-        if (!compressedBlob || compressedBlob.size >= file.size) {
+        if (!compressedBlob) {
+            return file
+        }
+
+        if (!requiresFlatImage(file) && compressedBlob.size >= file.size) {
             return file
         }
 
@@ -424,4 +442,138 @@ async function normalizeImageFile(file: File): Promise<File> {
         console.warn('Falling back to original image after normalization failure:', error)
         return file
     }
+}
+
+function shouldNormalizeUpload(file: File) {
+    const type = file.type.toLowerCase()
+    const extension = getFileExtension(file.name)
+
+    return type.startsWith('image/')
+        || type.startsWith('video/')
+        || ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'mov', 'mp4'].includes(extension)
+}
+
+function requiresFlatImage(file: File) {
+    const type = file.type.toLowerCase()
+    const extension = getFileExtension(file.name)
+
+    return type === 'image/heic'
+        || type === 'image/heif'
+        || type.startsWith('video/')
+        || ['heic', 'heif', 'mov', 'mp4'].includes(extension)
+}
+
+function isImagePreviewable(file: File) {
+    const type = file.type.toLowerCase()
+    const extension = getFileExtension(file.name)
+
+    return type.startsWith('image/')
+        && !['image/heic', 'image/heif'].includes(type)
+        && !['heic', 'heif'].includes(extension)
+}
+
+function getFileExtension(fileName: string) {
+    return fileName.split('.').pop()?.toLowerCase() || ''
+}
+
+type DrawableImageSource = {
+    width: number
+    height: number
+    draw: (context: CanvasRenderingContext2D, width: number, height: number) => void
+    dispose: () => void
+}
+
+async function loadImageSource(file: File): Promise<DrawableImageSource | null> {
+    if (typeof createImageBitmap === 'function') {
+        try {
+            const imageBitmap = await createImageBitmap(file)
+            return {
+                width: imageBitmap.width,
+                height: imageBitmap.height,
+                draw: (context, width, height) => context.drawImage(imageBitmap, 0, 0, width, height),
+                dispose: () => imageBitmap.close(),
+            }
+        } catch (error) {
+            console.warn('createImageBitmap failed for upload preview normalization:', error)
+        }
+    }
+
+    if (file.type.startsWith('video/') || ['mov', 'mp4'].includes(getFileExtension(file.name))) {
+        return loadVideoFrameSource(file)
+    }
+
+    const objectUrl = URL.createObjectURL(file)
+
+    try {
+        const image = await loadImageElement(objectUrl)
+        return {
+            width: image.naturalWidth || image.width,
+            height: image.naturalHeight || image.height,
+            draw: (context, width, height) => context.drawImage(image, 0, 0, width, height),
+            dispose: () => URL.revokeObjectURL(objectUrl),
+        }
+    } catch (error) {
+        URL.revokeObjectURL(objectUrl)
+        console.warn('Image element decode failed for upload preview normalization:', error)
+        return loadVideoFrameSource(file)
+    }
+}
+
+async function loadVideoFrameSource(file: File): Promise<DrawableImageSource | null> {
+    const objectUrl = URL.createObjectURL(file)
+
+    try {
+        const video = await loadVideoElement(objectUrl)
+        return {
+            width: video.videoWidth || 1,
+            height: video.videoHeight || 1,
+            draw: (context, width, height) => context.drawImage(video, 0, 0, width, height),
+            dispose: () => {
+                video.pause()
+                video.removeAttribute('src')
+                video.load()
+                URL.revokeObjectURL(objectUrl)
+            },
+        }
+    } catch (error) {
+        URL.revokeObjectURL(objectUrl)
+        console.warn('Video frame decode failed for upload normalization:', error)
+        return null
+    }
+}
+
+function loadImageElement(objectUrl: string): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+        const image = new Image()
+        image.onload = () => resolve(image)
+        image.onerror = () => reject(new Error('Failed to decode selected image'))
+        image.src = objectUrl
+    })
+}
+
+function loadVideoElement(objectUrl: string): Promise<HTMLVideoElement> {
+    return new Promise((resolve, reject) => {
+        const video = document.createElement('video')
+        video.muted = true
+        video.playsInline = true
+        video.preload = 'metadata'
+        video.onloadeddata = async () => {
+            try {
+                video.currentTime = 0
+            } catch {
+                // Some browsers already expose the first frame on loadeddata.
+            }
+            resolve(video)
+        }
+        video.onerror = () => reject(new Error('Failed to decode selected video frame'))
+        video.src = objectUrl
+    })
+}
+
+function getSubmissionErrorMessage(error: unknown) {
+    if (error instanceof Error && error.message) {
+        return error.message
+    }
+
+    return 'An unexpected error occurred. Please try again.'
 }
