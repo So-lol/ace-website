@@ -7,7 +7,6 @@ import { NavbarWithAuthClient, Footer } from '@/components/layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Label } from '@/components/ui/label'
 import {
     Camera,
     Upload,
@@ -98,13 +97,35 @@ export default function SubmitForm({ bonusActivities, weekNumber, year }: Submit
         fileInputRef.current?.click()
     }
 
-    const toggleBonus = (bonusId: string) => {
-        setSelectedBonuses(prev =>
-            prev.includes(bonusId)
-                ? prev.filter(id => id !== bonusId)
-                : [...prev, bonusId]
+    const setBonusSelection = useCallback((bonusId: string, selected: boolean) => {
+        setSelectedBonuses((previous) => {
+            const isSelected = previous.includes(bonusId)
+
+            if (selected) {
+                return isSelected ? previous : [...previous, bonusId]
+            }
+
+            return isSelected ? previous.filter((id) => id !== bonusId) : previous
+        })
+    }, [])
+
+    const toggleBonus = useCallback((bonusId: string) => {
+        setSelectedBonuses((previous) =>
+            previous.includes(bonusId)
+                ? previous.filter((id) => id !== bonusId)
+                : [...previous, bonusId]
         )
-    }
+    }, [])
+
+    const handleBonusRowClick = useCallback((event: React.MouseEvent<HTMLDivElement>, bonusId: string) => {
+        const target = event.target as HTMLElement
+
+        if (target.closest('[role="checkbox"]') || target.tagName === 'INPUT') {
+            return
+        }
+
+        toggleBonus(bonusId)
+    }, [toggleBonus])
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -149,7 +170,7 @@ export default function SubmitForm({ bonusActivities, weekNumber, year }: Submit
     const basePoints = 10
     const bonusPoints = selectedBonuses.reduce((acc, id) => {
         const bonus = bonusActivities.find(b => b.id === id)
-        return acc + (bonus?.points || 0)
+        return acc + Number(bonus?.points || 0)
     }, 0)
     const totalPoints = basePoints + bonusPoints
 
@@ -293,37 +314,42 @@ export default function SubmitForm({ bonusActivities, weekNumber, year }: Submit
                                             No active bonus activities for this week.
                                         </p>
                                     ) : (
-                                        bonusActivities.map((bonus) => (
+                                        bonusActivities.map((bonus) => {
+                                            const isSelected = selectedBonuses.includes(bonus.id)
+
+                                            return (
                                             <div
                                                 key={bonus.id}
+                                                role="button"
+                                                tabIndex={0}
+                                                aria-pressed={isSelected}
                                                 data-testid={`bonus-option-${bonus.id}`}
                                                 className={`flex items-start gap-4 p-4 rounded-lg border-2 transition-colors cursor-pointer
-                        ${selectedBonuses.includes(bonus.id)
+                        ${isSelected
                                                         ? 'border-primary bg-primary/5'
                                                         : 'border-transparent bg-muted/50 hover:bg-muted'
                                                     }`}
-                                                onClick={() => toggleBonus(bonus.id)}
+                                                onClick={(event) => handleBonusRowClick(event, bonus.id)}
+                                                onKeyDown={(event) => {
+                                                    if (event.key === 'Enter' || event.key === ' ') {
+                                                        event.preventDefault()
+                                                        toggleBonus(bonus.id)
+                                                    }
+                                                }}
                                             >
                                                 <Checkbox
                                                     id={bonus.id}
-                                                    checked={selectedBonuses.includes(bonus.id)}
-                                                    onClick={(e) => e.stopPropagation()}
-                                                    onCheckedChange={() => toggleBonus(bonus.id)}
+                                                    checked={isSelected}
+                                                    aria-label={bonus.name}
+                                                    onClick={(event) => event.stopPropagation()}
+                                                    onCheckedChange={(checked) => setBonusSelection(bonus.id, checked === true)}
                                                     className="mt-0.5"
                                                 />
                                                 <div className="flex-1">
-                                                    <Label
-                                                        htmlFor={bonus.id}
-                                                        className="font-medium cursor-pointer"
-                                                        onClick={(event) => {
-                                                            event.preventDefault()
-                                                            event.stopPropagation()
-                                                            toggleBonus(bonus.id)
-                                                        }}
-                                                    >
+                                                    <div className="font-medium text-left">
                                                         {bonus.name}
-                                                    </Label>
-                                                    <p className="text-sm text-muted-foreground mt-1">
+                                                    </div>
+                                                    <p className="text-left text-sm text-muted-foreground mt-1">
                                                         {bonus.description}
                                                     </p>
                                                 </div>
@@ -331,7 +357,7 @@ export default function SubmitForm({ bonusActivities, weekNumber, year }: Submit
                                                     +{bonus.points} pts
                                                 </div>
                                             </div>
-                                        ))
+                                        )})
                                     )}
                                 </div>
                             </CardContent>

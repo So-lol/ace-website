@@ -158,10 +158,10 @@ async function login(page: import('@playwright/test').Page, email: string, passw
 }
 
 async function selectBonusActivity(page: Page, bonusName: string) {
-    const checkbox = page.getByRole('checkbox', { name: bonusName })
+    const bonusCard = page.locator('[data-testid^="bonus-option-"]').filter({ hasText: bonusName }).first()
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
-        await checkbox.click()
+        await bonusCard.click()
         const totalText = await page.getByText('15 pts').count()
         if (totalText > 0) {
             return

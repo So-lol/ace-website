@@ -17,15 +17,17 @@ export async function getBonusActivities(activeOnly = false): Promise<BonusActiv
         const snapshot = await query.get()
         return snapshot.docs.map(doc => {
             const data = doc.data() as BonusActivityDoc
+            const parsedPoints = Number(data.points)
+
             return {
-            id: doc.id,
-            name: data.name,
-            description: data.description,
-            points: data.points,
-            isActive: data.isActive,
-            createdAt: data.createdAt.toDate(),
-            updatedAt: data.updatedAt.toDate(),
-        }
+                id: doc.id,
+                name: String(data.name || 'Bonus Activity'),
+                description: String(data.description || ''),
+                points: Number.isFinite(parsedPoints) ? parsedPoints : 0,
+                isActive: Boolean(data.isActive),
+                createdAt: data.createdAt.toDate(),
+                updatedAt: data.updatedAt.toDate(),
+            }
         })
     } catch (error) {
         console.error('Error fetching bonus activities:', error)
