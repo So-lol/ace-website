@@ -9,6 +9,11 @@ const AUTH_EMULATOR_URL = 'http://127.0.0.1:9099'
 const FIRESTORE_EMULATOR_URL = 'http://127.0.0.1:8080'
 const FIXTURE_IMAGE = path.resolve(process.cwd(), 'tests/fixtures/test-upload.png')
 const FIXTURE_IMAGE_BUFFER = fs.readFileSync(FIXTURE_IMAGE)
+const IPHONE_STYLE_UPLOAD = {
+    name: 'IMG_2048.HEIC',
+    mimeType: 'image/heic',
+    buffer: FIXTURE_IMAGE_BUFFER,
+}
 
 process.env.GCLOUD_PROJECT = PROJECT_ID
 process.env.FIRESTORE_EMULATOR_HOST = '127.0.0.1:8080'
@@ -299,6 +304,30 @@ test.describe.serial('photo submissions e2e audit', () => {
         expect(submissions.some((submission) => submission.totalPoints === 15)).toBeTruthy()
         expect(submissions.some((submission) => submission.totalPoints === 10)).toBeTruthy()
         expect(submissions.some((submission) => submission.bonusActivityIds?.[0] === bonusId)).toBeTruthy()
+    })
+
+    test('participant can upload an iPhone-style photo file', async ({ page, request }) => {
+        const { mentor } = await seedPhotoSubmissionFixture(request)
+
+        await login(page, mentor.email, mentor.password)
+        await page.goto('/dashboard/submit', { waitUntil: 'domcontentloaded' })
+
+        await expect(page.getByRole('heading', { name: 'Submit Weekly Photo' })).toBeVisible()
+        await page.locator('[data-testid="submission-file-input"]').setInputFiles([IPHONE_STYLE_UPLOAD])
+        await expect(page.getByRole('button', { name: 'Submit Photo' })).toBeEnabled()
+        await page.getByRole('button', { name: 'Submit Photo' }).click()
+
+        await expect(page).toHaveURL(/\/dashboard\/submissions/, { timeout: 20_000 })
+        await expect(page.getByText('Pending Review')).toBeVisible()
+
+        const submissionsSnapshot = await adminDb.collection('submissions').get()
+        expect(submissionsSnapshot.docs).toHaveLength(1)
+
+        const submission = submissionsSnapshot.docs[0].data()
+        expect(submission.submitterId).toBe(mentor.uid)
+        expect(submission.status).toBe('PENDING')
+        expect(submission.uploadState).toBe('UPLOADED')
+        expect(String(submission.imagePath)).toMatch(/\.(heic|heif|webp)$/i)
     })
 
     test('admin can review the submission, media is visible, and points propagate to pairing and family', async ({ browser, request }) => {

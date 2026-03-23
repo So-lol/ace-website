@@ -98,9 +98,9 @@ export async function uploadSubmissionImage(formData: FormData): Promise<UploadR
     }
 
     // Validate file type
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic']
-    if (!allowedTypes.includes(file.type)) {
-        return { success: false, error: 'Invalid file type. Please upload JPG, PNG, WebP, or HEIC.' }
+    const contentType = getSubmissionContentType(file)
+    if (!contentType) {
+        return { success: false, error: 'Invalid file type. Please upload JPG, PNG, WebP, HEIC, or HEIF.' }
     }
 
     // Validate file size (10MB max)
@@ -111,7 +111,7 @@ export async function uploadSubmissionImage(formData: FormData): Promise<UploadR
 
     // Generate unique filename
     const timestamp = Date.now()
-    const extension = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+    const extension = getFileExtension(file)
     const fileName = `submissions/${user.id}/${timestamp}.${extension}`
 
     // Convert file to buffer
@@ -119,7 +119,7 @@ export async function uploadSubmissionImage(formData: FormData): Promise<UploadR
     const buffer = Buffer.from(arrayBuffer)
 
     // Upload to Firebase Storage
-    const result = await uploadFile(buffer, fileName, file.type, {
+    const result = await uploadFile(buffer, fileName, contentType, {
         originalFileName: file.name,
         uploadedBy: user.id,
     })
@@ -148,8 +148,41 @@ function getFileExtension(file: File) {
             return 'webp'
         case 'image/heic':
             return 'heic'
+        case 'image/heif':
+            return 'heif'
         default:
             return 'jpg'
+    }
+}
+
+function getSubmissionContentType(file: File) {
+    const normalizedType = file.type.toLowerCase()
+
+    switch (normalizedType) {
+        case 'image/jpeg':
+        case 'image/png':
+        case 'image/webp':
+        case 'image/heic':
+        case 'image/heif':
+            return normalizedType
+        default:
+            break
+    }
+
+    switch (getFileExtension(file)) {
+        case 'jpg':
+        case 'jpeg':
+            return 'image/jpeg'
+        case 'png':
+            return 'image/png'
+        case 'webp':
+            return 'image/webp'
+        case 'heic':
+            return 'image/heic'
+        case 'heif':
+            return 'image/heif'
+        default:
+            return null
     }
 }
 
@@ -260,9 +293,9 @@ export async function submitPhotoSubmission(
         return { success: false, error: 'You must be logged in to submit' }
     }
 
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic']
-    if (!allowedTypes.includes(file.type)) {
-        return { success: false, error: 'Invalid file type. Please upload JPG, PNG, WebP, or HEIC.' }
+    const contentType = getSubmissionContentType(file)
+    if (!contentType) {
+        return { success: false, error: 'Invalid file type. Please upload JPG, PNG, WebP, HEIC, or HEIF.' }
     }
 
     if (file.size > 10 * 1024 * 1024) {
@@ -317,7 +350,7 @@ export async function submitPhotoSubmission(
 
         const arrayBuffer = await file.arrayBuffer()
         const buffer = Buffer.from(arrayBuffer)
-        const uploadResult = await uploadFile(buffer, imagePath, file.type, {
+        const uploadResult = await uploadFile(buffer, imagePath, contentType, {
             originalFileName: file.name,
             uploadedBy: user.id,
             submissionId,
