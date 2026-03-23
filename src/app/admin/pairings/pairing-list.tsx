@@ -206,7 +206,7 @@ export default function PairingList({ pairings, families, users }: PairingListPr
         .sort((a, b) => a.name.localeCompare(b.name))
 
     const availableMentees = users
-        .filter(u => u.role === 'MENTEE' && !assignedMenteeIds.has(u.id))
+        .filter(u => (u.role === 'MENTEE' || u.role === 'ADMIN') && !assignedMenteeIds.has(u.id))
         .sort((a, b) => a.name.localeCompare(b.name))
 
     return (
@@ -300,7 +300,7 @@ export default function PairingList({ pairings, families, users }: PairingListPr
                                     <Label>Mentees</Label>
                                     <div className="border rounded-md p-4 max-h-60 overflow-y-auto space-y-2">
                                         {availableMentees.length === 0 ? (
-                                            <p className="text-sm text-muted-foreground text-center py-4">All mentees have been assigned to pairings</p>
+                                            <p className="text-sm text-muted-foreground text-center py-4">All eligible mentees have been assigned to pairings</p>
                                         ) : (
                                             availableMentees.map((u) => (
                                                 <div key={u.id} className="flex items-center space-x-2">

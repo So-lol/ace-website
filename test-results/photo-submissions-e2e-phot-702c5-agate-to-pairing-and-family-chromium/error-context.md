@@ -1,0 +1,119 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - navigation [ref=e4]:
+        - link "VSAM ACE Anh Chị Em Program" [ref=e5] [cursor=pointer]:
+          - /url: /
+          - img [ref=e8]
+          - generic [ref=e12]:
+            - text: VSAM ACE
+            - paragraph [ref=e13]: Anh Chị Em Program
+        - generic [ref=e14]:
+          - link "Apply" [ref=e15] [cursor=pointer]:
+            - /url: /apply
+            - button "Apply" [ref=e16]:
+              - img
+              - text: Apply
+          - link "Leaderboard" [ref=e17] [cursor=pointer]:
+            - /url: /leaderboard
+            - button "Leaderboard" [ref=e18]:
+              - img
+              - text: Leaderboard
+          - link "Announcements" [ref=e19] [cursor=pointer]:
+            - /url: /announcements
+            - button "Announcements" [ref=e20]:
+              - img
+              - text: Announcements
+          - link "About ACE" [ref=e21] [cursor=pointer]:
+            - /url: /about
+            - button "About ACE" [ref=e22]:
+              - img
+              - text: About ACE
+        - button "MP Mentor" [ref=e24]:
+          - generic [ref=e26]: MP
+          - generic [ref=e27]: Mentor
+    - main [ref=e28]:
+      - generic [ref=e29]:
+        - link "Back to Dashboard" [ref=e30] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e31]
+          - text: Back to Dashboard
+        - generic [ref=e33]:
+          - generic [ref=e34]:
+            - heading "My Submissions" [level=1] [ref=e35]
+            - paragraph [ref=e36]: View all your weekly photo submissions
+          - generic [ref=e37]:
+            - generic [ref=e39]:
+              - img [ref=e40]
+              - generic [ref=e46]:
+                - generic [ref=e47]: "15"
+                - generic [ref=e48]: Total Points
+            - generic [ref=e50]:
+              - img [ref=e51]
+              - generic [ref=e54]:
+                - generic [ref=e55]: "0"
+                - generic [ref=e56]: Approved
+        - generic [ref=e59]:
+          - img "Week 7 submission" [ref=e61]
+          - generic [ref=e62]:
+            - generic [ref=e63]:
+              - generic [ref=e64]:
+                - heading "Week 7" [level=3] [ref=e65]
+                - generic [ref=e66]:
+                  - img [ref=e67]
+                  - text: Submitted Mar 22, 2026, 10:22 PM
+              - generic [ref=e70]:
+                - img
+                - text: Pending Review
+            - generic [ref=e71]:
+              - text: "Bonuses:"
+              - generic [ref=e72]: Coffee Date
+    - contentinfo [ref=e73]:
+      - generic [ref=e74]:
+        - generic [ref=e75]:
+          - generic [ref=e76]:
+            - link "VSAM ACE Anh Chị Em Program" [ref=e77] [cursor=pointer]:
+              - /url: /
+              - img [ref=e79]
+              - generic [ref=e82]:
+                - text: VSAM ACE
+                - paragraph [ref=e83]: Anh Chị Em Program
+            - paragraph [ref=e84]: The Anh Chị Em (ACE) program connects Vietnamese students at the University of Minnesota through meaningful mentorship relationships, building a stronger community for all.
+          - generic [ref=e85]:
+            - heading "Quick Links" [level=3] [ref=e86]
+            - list [ref=e87]:
+              - listitem [ref=e88]:
+                - link "ACE Application" [ref=e89] [cursor=pointer]:
+                  - /url: /apply
+              - listitem [ref=e90]:
+                - link "Leaderboard" [ref=e91] [cursor=pointer]:
+                  - /url: /leaderboard
+              - listitem [ref=e92]:
+                - link "Announcements" [ref=e93] [cursor=pointer]:
+                  - /url: /announcements
+              - listitem [ref=e94]:
+                - link "About ACE" [ref=e95] [cursor=pointer]:
+                  - /url: /about
+          - generic [ref=e96]:
+            - heading "Resources" [level=3] [ref=e97]
+            - list [ref=e98]:
+              - listitem [ref=e99]:
+                - link "Member Login" [ref=e100] [cursor=pointer]:
+                  - /url: /login
+              - listitem [ref=e101]:
+                - link "Contact Us" [ref=e102] [cursor=pointer]:
+                  - /url: /about#contact
+        - generic [ref=e103]:
+          - paragraph [ref=e104]: © 2026 Vietnamese Student Association of Minnesota. All rights reserved.
+          - paragraph [ref=e105]:
+            - text: Made with
+            - img [ref=e106]
+            - text: for the VSAM community
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e113] [cursor=pointer]:
+    - img [ref=e114]
+  - alert [ref=e117]: My Submissions | VSAM ACE
+```

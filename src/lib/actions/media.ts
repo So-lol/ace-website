@@ -1,11 +1,16 @@
 'use server'
 
-import { adminDb, deleteFile, getFileReadUrl } from '@/lib/firebase-admin'
+import { adminDb, adminStorage, deleteFile, getFileReadUrl } from '@/lib/firebase-admin'
 import { requireAdmin } from '@/lib/auth-helpers'
 import { revalidatePath } from 'next/cache'
 import { FieldValue } from 'firebase-admin/firestore'
 import { SubmissionDoc, SubmissionStatus } from '@/types/firestore'
 import { logAuditAction } from '@/lib/actions/audit'
+import {
+    buildMediaReconciliationReport,
+    MediaReconciliationIssue,
+    MediaReconciliationReport,
+} from '@/lib/media-reconciliation-utils'
 
 type MediaFilter = 'all' | 'active' | 'archived'
 
@@ -34,6 +39,10 @@ export interface MediaLibraryStats {
     eligibleForDeletion: number
 }
 
+export interface MediaStorageAuditReport extends MediaReconciliationReport {
+    auditedAt: string
+}
+
 export async function getMediaLibrary(filter: MediaFilter = 'all'): Promise<MediaLibraryItem[]> {
     try {
         await requireAdmin()
@@ -44,6 +53,8 @@ export async function getMediaLibrary(filter: MediaFilter = 'all'): Promise<Medi
 
         const media: Array<MediaLibraryItem | null> = await Promise.all(snapshot.docs.map(async (doc) => {
             const data = doc.data() as SubmissionDoc
+
+            if ((data.uploadState || 'UPLOADED') !== 'UPLOADED') return null
 
             // Apply filter
             if (filter === 'active' && data.isArchived) return null
@@ -258,5 +269,90 @@ export async function getMediaStats(): Promise<MediaLibraryStats> {
     } catch (error) {
         console.error('Error fetching media stats:', error)
         return { total: 0, active: 0, archived: 0, eligibleForDeletion: 0 }
+    }
+}
+
+function formatIssueDetails(issue: MediaReconciliationIssue) {
+    switch (issue.code) {
+        case 'MISSING_IMAGE_PATH':
+            return `Submission ${issue.submissionId} is marked uploaded but has no storage path.`
+        case 'MISSING_STORAGE_OBJECT':
+            return `Submission ${issue.submissionId} references missing file ${issue.imagePath}.`
+        case 'FAILED_UPLOAD':
+            return `Submission ${issue.submissionId} is marked as a failed upload.`
+        case 'STUCK_UPLOADING':
+            return `Submission ${issue.submissionId} has been uploading for ${issue.ageMinutes ?? 'unknown'} minutes.`
+        case 'FILE_PRESENT_FOR_INCOMPLETE_UPLOAD':
+            return `Submission ${issue.submissionId} has a file in storage but is not marked uploaded.`
+        case 'ORPHANED_STORAGE_OBJECT':
+            return `Storage object ${issue.imagePath} has no matching submission record.`
+    }
+}
+
+export async function reconcileMediaStorage(): Promise<{ success: true; report: MediaStorageAuditReport } | { success: false; error: string }> {
+    try {
+        const adminUser = await requireAdmin()
+        const snapshot = await adminDb.collection('submissions').get()
+        const bucket = adminStorage.bucket()
+        const [files] = await bucket.getFiles({ prefix: 'submissions/' })
+
+        const report = buildMediaReconciliationReport(
+            snapshot.docs.map((doc) => {
+                const data = doc.data() as SubmissionDoc
+                return {
+                    id: doc.id,
+                    imagePath: data.imagePath,
+                    uploadState: data.uploadState || 'UPLOADED',
+                    createdAt: data.createdAt?.toDate?.() || null,
+                }
+            }),
+            files.map((file) => file.name),
+            new Date()
+        )
+
+        const auditedAt = new Date().toISOString()
+
+        await logAuditAction(
+            adminUser.id,
+            'MEDIA_STORAGE_RECONCILED',
+            'SUBMISSION',
+            'media-library',
+            report.issueCount === 0
+                ? `Media reconciliation passed across ${report.scannedSubmissions} submissions.`
+                : `Media reconciliation found ${report.issueCount} issues across ${report.scannedSubmissions} submissions.`,
+            {
+                actorName: adminUser.name,
+                auditedAt,
+                summary: {
+                    scannedSubmissions: report.scannedSubmissions,
+                    uploadedSubmissions: report.uploadedSubmissions,
+                    healthySubmissions: report.healthySubmissions,
+                    issueCount: report.issueCount,
+                    missingFiles: report.missingFiles,
+                    failedUploads: report.failedUploads,
+                    stuckUploads: report.stuckUploads,
+                    inconsistentStates: report.inconsistentStates,
+                    orphanedFiles: report.orphanedFiles,
+                },
+                issues: report.issues.slice(0, 25).map((issue) => ({
+                    ...issue,
+                    details: formatIssueDetails(issue),
+                })),
+            },
+            adminUser.email
+        )
+
+        revalidatePath('/admin/media')
+
+        return {
+            success: true,
+            report: {
+                ...report,
+                auditedAt,
+            },
+        }
+    } catch (error) {
+        console.error('Error reconciling media storage:', error)
+        return { success: false, error: 'Failed to reconcile media storage' }
     }
 }

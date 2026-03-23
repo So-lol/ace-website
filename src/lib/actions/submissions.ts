@@ -1,7 +1,7 @@
 'use server'
 
 import { getAuthenticatedUser, requireAdmin } from '@/lib/auth-helpers'
-import { uploadFile, deleteFile, adminDb, getFileReadUrl } from '@/lib/firebase-admin'
+import { uploadFile, deleteFile, adminDb, getFileReadUrl, fileExists } from '@/lib/firebase-admin'
 import { revalidatePath } from 'next/cache'
 import { Timestamp, FieldValue, FieldPath } from 'firebase-admin/firestore'
 import { SubmissionDoc, PairingDoc, SubmissionStatus } from '@/types/firestore'
@@ -20,11 +20,14 @@ export type SubmissionResult = {
     submissionId?: string
 }
 
+type SubmissionUploadState = 'UPLOADING' | 'UPLOADED' | 'FAILED'
+
 type StoredDocumentData = Record<string, unknown>
 
 export interface AdminSubmissionListItem {
     id: string
-    pairingId: string
+    pairingId?: string
+    familyId?: string
     submitterId: string
     weekNumber: number
     year: number
@@ -75,6 +78,8 @@ export interface UserSubmissionListItem {
     reviewedAt: Date | null
     reviewReason?: string
     bonuses: string[]
+    uploadState: SubmissionUploadState
+    uploadError?: string
 }
 
 /**
@@ -130,6 +135,229 @@ export async function uploadSubmissionImage(formData: FormData): Promise<UploadR
     }
 }
 
+function getFileExtension(file: File) {
+    const extension = file.name.split('.').pop()?.toLowerCase()
+    if (extension) {
+        return extension
+    }
+
+    switch (file.type) {
+        case 'image/png':
+            return 'png'
+        case 'image/webp':
+            return 'webp'
+        case 'image/heic':
+            return 'heic'
+        default:
+            return 'jpg'
+    }
+}
+
+async function resolvePairingForUser(userId: string) {
+    const pairingsRef = adminDb.collection('pairings')
+    let snapshot = await pairingsRef.where('mentorId', '==', userId).limit(1).get()
+
+    if (snapshot.empty) {
+        snapshot = await pairingsRef.where('menteeIds', 'array-contains', userId).limit(1).get()
+    }
+
+    if (snapshot.empty) {
+        return null
+    }
+
+    return snapshot.docs[0]
+}
+
+async function resolveFamilyForFamilyHead(userId: string) {
+    let snapshot = await adminDb.collection('families').where('familyHeadIds', 'array-contains', userId).limit(1).get()
+
+    if (snapshot.empty) {
+        snapshot = await adminDb.collection('families').where('familyHeadId', '==', userId).limit(1).get()
+    }
+
+    if (snapshot.empty) {
+        return null
+    }
+
+    return snapshot.docs[0]
+}
+
+async function resolveSubmissionContextForUser(userId: string) {
+    const pairingDoc = await resolvePairingForUser(userId)
+    if (pairingDoc) {
+        const pairingData = pairingDoc.data() as PairingDoc
+        return {
+            pairingId: pairingDoc.id,
+            familyId: pairingData.familyId,
+            scope: 'PAIRING' as const,
+        }
+    }
+
+    const familyDoc = await resolveFamilyForFamilyHead(userId)
+    if (familyDoc) {
+        return {
+            pairingId: undefined,
+            familyId: familyDoc.id,
+            scope: 'FAMILY' as const,
+        }
+    }
+
+    return null
+}
+
+async function calculateSubmissionPoints(bonusActivityIds: string[]) {
+    const uniqueBonusIds = Array.from(new Set(bonusActivityIds))
+
+    if (uniqueBonusIds.length !== bonusActivityIds.length) {
+        throw new Error('Duplicate bonus selections are not allowed.')
+    }
+
+    if (uniqueBonusIds.length > 10) {
+        throw new Error('Too many bonus activities selected.')
+    }
+
+    const basePoints = 10
+    let bonusPoints = 0
+
+    if (uniqueBonusIds.length > 0) {
+        const bonusesSnap = await adminDb.collection('bonusActivities')
+            .where(FieldPath.documentId(), 'in', uniqueBonusIds)
+            .get()
+
+        if (bonusesSnap.size !== uniqueBonusIds.length) {
+            throw new Error('One or more selected bonus activities are invalid.')
+        }
+
+        bonusesSnap.forEach(doc => {
+            const data = doc.data()
+            if (!data.isActive) {
+                throw new Error('Selected bonus activities must be active.')
+            }
+            bonusPoints += (data.points || 0)
+        })
+    }
+
+    return {
+        basePoints,
+        bonusPoints,
+        totalPoints: basePoints + bonusPoints,
+        uniqueBonusIds,
+    }
+}
+
+function getSubmissionDocId(pairingId: string, year: number, weekNumber: number) {
+    return `${pairingId}_${year}_${weekNumber}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+export async function submitPhotoSubmission(
+    file: File,
+    weekNumber: number,
+    year: number,
+    bonusActivityIds: string[]
+): Promise<SubmissionResult> {
+    const user = await getAuthenticatedUser()
+    if (!user) {
+        return { success: false, error: 'You must be logged in to submit' }
+    }
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic']
+    if (!allowedTypes.includes(file.type)) {
+        return { success: false, error: 'Invalid file type. Please upload JPG, PNG, WebP, or HEIC.' }
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+        return { success: false, error: 'File too large. Maximum size is 10MB.' }
+    }
+
+    try {
+        const submissionContext = await resolveSubmissionContextForUser(user.id)
+        if (!submissionContext) {
+            return { success: false, error: 'You are not part of a pairing or assigned as a family head yet. Please contact an admin.' }
+        }
+
+        const ownerId = submissionContext.pairingId || submissionContext.familyId
+        if (!ownerId) {
+            return { success: false, error: 'Unable to determine where this submission should be attached.' }
+        }
+
+        const submissionId = getSubmissionDocId(ownerId, year, weekNumber)
+        const submissionRef = adminDb.collection('submissions').doc(submissionId)
+        const extension = getFileExtension(file)
+        const imagePath = `submissions/${submissionContext.scope.toLowerCase()}s/${ownerId}/${year}/week-${weekNumber}/${submissionId}.${extension}`
+        const { basePoints, bonusPoints, totalPoints, uniqueBonusIds } = await calculateSubmissionPoints(bonusActivityIds)
+        const now = Timestamp.now()
+
+        await adminDb.runTransaction(async (transaction) => {
+            const submissionData: Omit<SubmissionDoc, 'id'> = {
+                submitterId: user.id,
+                weekNumber,
+                year,
+                imageUrl: '',
+                imagePath,
+                status: 'PENDING',
+                basePoints,
+                bonusPoints,
+                totalPoints,
+                bonusActivityIds: uniqueBonusIds,
+                uploadState: 'UPLOADING',
+                uploadError: null,
+                uploadedAt: null,
+                createdAt: now,
+                updatedAt: now,
+            }
+
+            if (submissionContext.pairingId) {
+                submissionData.pairingId = submissionContext.pairingId
+            }
+
+            if (submissionContext.familyId) {
+                submissionData.familyId = submissionContext.familyId
+            }
+
+            transaction.set(submissionRef, submissionData)
+        })
+
+        const arrayBuffer = await file.arrayBuffer()
+        const buffer = Buffer.from(arrayBuffer)
+        const uploadResult = await uploadFile(buffer, imagePath, file.type, {
+            originalFileName: file.name,
+            uploadedBy: user.id,
+            submissionId,
+        })
+
+        if (!uploadResult || !(await fileExists(imagePath))) {
+            await submissionRef.set({
+                uploadState: 'FAILED',
+                uploadError: 'Upload verification failed.',
+                updatedAt: Timestamp.now(),
+            }, { merge: true })
+
+            return { success: false, error: 'Failed to upload image. Please try again.' }
+        }
+
+        await submissionRef.set({
+            uploadState: 'UPLOADED',
+            uploadError: null,
+            uploadedAt: Timestamp.now(),
+            updatedAt: Timestamp.now(),
+        }, { merge: true })
+
+        revalidatePath('/dashboard')
+        revalidatePath('/dashboard/submissions')
+        revalidatePath('/admin')
+        revalidatePath('/admin/submissions')
+        revalidatePath('/admin/media')
+
+        return {
+            success: true,
+            submissionId,
+        }
+    } catch (error) {
+        console.error('Photo submission error:', error)
+        return { success: false, error: getErrorMessage(error, 'Failed to submit photo. Please try again.') }
+    }
+}
+
 /**
  * Get a user's submission history
  */
@@ -181,6 +409,8 @@ export async function getUserSubmissions(userId: string): Promise<UserSubmission
             reviewedAt: submission.reviewedAt?.toDate?.() || null,
             reviewReason: submission.reviewReason,
             bonuses: (submission.bonusActivityIds || []).map(id => bonusNameMap.get(id) || 'Bonus'),
+            uploadState: submission.uploadState || 'UPLOADED',
+            uploadError: submission.uploadError,
         })))
     } catch (error) {
         console.error('Error fetching user submissions:', error)
@@ -216,22 +446,11 @@ export async function createSubmission(
         }
 
         if (snapshot.empty) {
-            return { success: false, error: 'You are not part of a pairing yet. Please contact an admin.' }
+            return { success: false, error: 'You are not part of a pairing or assigned as a family head yet. Please contact an admin.' }
         }
 
         const pairingDoc = snapshot.docs[0]
         const pairingId = pairingDoc.id
-
-        const existingSubmissionSnapshot = await adminDb.collection('submissions')
-            .where('pairingId', '==', pairingId)
-            .where('weekNumber', '==', weekNumber)
-            .where('year', '==', year)
-            .limit(1)
-            .get()
-
-        if (!existingSubmissionSnapshot.empty) {
-            return { success: false, error: 'Your pairing already has a submission for this week.' }
-        }
 
         // Calculate points
         const basePoints = 10
@@ -270,6 +489,7 @@ export async function createSubmission(
         // Create submission
         const newSubmission: Omit<SubmissionDoc, 'id'> = {
             pairingId,
+            familyId: (pairingDoc.data() as PairingDoc).familyId,
             submitterId: user.id,
             weekNumber,
             year,
@@ -353,12 +573,36 @@ export async function approveSubmission(submissionId: string): Promise<Submissio
             }
 
             const submissionData = submissionSnap.data() as SubmissionDoc
-
             if (submissionData.status !== 'PENDING') {
                 throw new Error('Submission has already been reviewed')
             }
 
-            // Approve submission
+            if (submissionData.uploadState !== 'UPLOADED') {
+                throw new Error('Submission image is not fully uploaded')
+            }
+
+            const pairingRef = submissionData.pairingId
+                ? adminDb.collection('pairings').doc(submissionData.pairingId)
+                : null
+            const pairingSnap = pairingRef ? await transaction.get(pairingRef) : null
+            const familyId = submissionData.familyId || (pairingSnap?.exists ? (pairingSnap.data() as PairingDoc).familyId : null)
+
+            if (!familyId) {
+                throw new Error('Family not found for submission')
+            }
+
+            if (submissionData.pairingId && (!pairingSnap || !pairingSnap.exists)) {
+                throw new Error('Pairing not found for submission')
+            }
+
+            const familyRef = adminDb.collection('families').doc(familyId)
+            const familySnap = await transaction.get(familyRef)
+
+            if (!familySnap.exists) {
+                throw new Error('Family not found for submission pairing')
+            }
+
+            // Firestore transactions require all reads to happen before writes.
             transaction.update(submissionRef, {
                 status: 'APPROVED',
                 reviewerId: adminUser.id,
@@ -366,23 +610,14 @@ export async function approveSubmission(submissionId: string): Promise<Submissio
                 updatedAt: Timestamp.now(),
             })
 
-            // Update pairing points
-            const pairingRef = adminDb.collection('pairings').doc(submissionData.pairingId)
-            const pairingSnap = await transaction.get(pairingRef)
-
-            if (!pairingSnap.exists) {
-                throw new Error('Pairing not found for submission')
+            if (pairingRef) {
+                transaction.update(pairingRef, {
+                    weeklyPoints: FieldValue.increment(submissionData.totalPoints),
+                    totalPoints: FieldValue.increment(submissionData.totalPoints),
+                    updatedAt: Timestamp.now(),
+                })
             }
 
-            const pairingData = pairingSnap.data() as PairingDoc
-
-            transaction.update(pairingRef, {
-                weeklyPoints: FieldValue.increment(submissionData.totalPoints),
-                totalPoints: FieldValue.increment(submissionData.totalPoints),
-                updatedAt: Timestamp.now(),
-            })
-
-            const familyRef = adminDb.collection('families').doc(pairingData.familyId)
             transaction.update(familyRef, {
                 weeklyPoints: FieldValue.increment(submissionData.totalPoints),
                 totalPoints: FieldValue.increment(submissionData.totalPoints),
@@ -447,6 +682,10 @@ export async function rejectSubmission(submissionId: string, reason: string): Pr
                 throw new Error('Submission has already been reviewed')
             }
 
+            if (submissionData.uploadState !== 'UPLOADED') {
+                throw new Error('Submission image is not fully uploaded')
+            }
+
             // Reject submission and reset points
             transaction.update(submissionRef, {
                 status: 'REJECTED',
@@ -500,7 +739,9 @@ export async function getSubmissions(status?: SubmissionStatus): Promise<AdminSu
         }
 
         const snapshot = await query.get()
-        const submissionsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SubmissionDoc & { id: string }))
+        const submissionsData = snapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() } as SubmissionDoc & { id: string }))
+            .filter(submission => (submission.uploadState || 'UPLOADED') === 'UPLOADED')
 
         if (submissionsData.length === 0) return []
 
@@ -543,6 +784,10 @@ export async function getSubmissions(status?: SubmissionStatus): Promise<AdminSu
         const familyIds = new Set<string>()
         const mentorIds = new Set<string>()
 
+        submissionsData.forEach(sub => {
+            if (sub.familyId) familyIds.add(sub.familyId)
+        })
+
         pairingsMap.forEach((pairing) => {
             const pairingData = pairing as PairingDoc
             if (pairingData.familyId) familyIds.add(pairingData.familyId)
@@ -580,6 +825,14 @@ export async function getSubmissions(status?: SubmissionStatus): Promise<AdminSu
                     mentor: { name: String(mentor.name || 'Unknown Mentor') },
                     menteeIds: pairing.menteeIds || [],
                 }
+            } else if (sub.familyId) {
+                const family = familiesMap.get(sub.familyId) || { name: 'Unknown Family' }
+                pairingData = {
+                    id: `family:${sub.familyId}`,
+                    family: { name: String(family.name || 'Unknown Family') },
+                    mentor: { name: typeof submitter.name === 'string' ? submitter.name : 'Family Head' },
+                    menteeIds: [],
+                }
             }
 
             const bonusActivities: AdminSubmissionListItem['bonusActivities'] = (sub.bonusActivityIds || []).reduce((acc, id) => {
@@ -598,6 +851,7 @@ export async function getSubmissions(status?: SubmissionStatus): Promise<AdminSu
             return {
                 id: sub.id,
                 pairingId: sub.pairingId,
+                familyId: sub.familyId,
                 submitterId: sub.submitterId,
                 weekNumber: sub.weekNumber,
                 year: sub.year,

@@ -216,7 +216,8 @@ export async function getFileReadUrl(path: string, expiresInMs = 1000 * 60 * 60)
     const bucket = adminStorage.bucket()
 
     if (isUsingEmulators) {
-        return `https://storage.googleapis.com/${bucket.name}/${path}`
+        const emulatorHost = process.env.FIREBASE_STORAGE_EMULATOR_HOST || process.env.NEXT_PUBLIC_FIREBASE_STORAGE_EMULATOR_HOST || '127.0.0.1:9199'
+        return `http://${emulatorHost}/v0/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media`
     }
 
     const file = bucket.file(path)
@@ -227,6 +228,18 @@ export async function getFileReadUrl(path: string, expiresInMs = 1000 * 60 * 60)
     })
 
     return signedUrl
+}
+
+export async function fileExists(path: string): Promise<boolean> {
+    try {
+        const bucket = adminStorage.bucket()
+        const file = bucket.file(path)
+        const [exists] = await file.exists()
+        return exists
+    } catch (error) {
+        console.error('Error checking file existence in Firebase Storage:', error)
+        return false
+    }
 }
 
 /**
