@@ -2,14 +2,14 @@
 
 import { adminDb } from '@/lib/firebase-admin'
 import { requireAdmin } from '@/lib/auth-helpers'
-import { getCurrentWeek } from '@/lib/utils'
+import { getCurrentProgramWeek } from '@/lib/program-settings-server'
 
 export async function getAdminStats() {
     try {
         // Secure action
         await requireAdmin()
 
-        const { weekNumber, year } = getCurrentWeek()
+        const { weekNumber, year } = await getCurrentProgramWeek()
 
         const [
             usersSnap,

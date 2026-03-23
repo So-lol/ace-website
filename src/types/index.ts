@@ -89,6 +89,14 @@ export interface Announcement {
     updatedAt: Date
 }
 
+export interface ProgramSettings {
+    programStartDate: string
+    weekCountStartDate: string
+    updatedBy?: string
+    createdAt?: Date
+    updatedAt?: Date
+}
+
 // ======================
 // ACE APPLICATION
 // ======================

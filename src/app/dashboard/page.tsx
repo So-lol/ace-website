@@ -21,7 +21,7 @@ import { getUserProfile } from '@/lib/actions/users'
 import { getUserStats } from '@/lib/actions/stats'
 import { getUserSubmissions } from '@/lib/actions/submissions'
 import { getBonusActivities } from '@/lib/actions/bonuses'
-import { getCurrentWeek } from '@/lib/utils'
+import { getCurrentProgramWeek } from '@/lib/program-settings-server'
 
 export const metadata: Metadata = {
     title: 'Dashboard',
@@ -47,14 +47,14 @@ export default async function DashboardPage() {
         redirect('/login')
     }
 
-    const [profile, stats, submissions, bonusActivities] = await Promise.all([
+    const [profile, stats, submissions, bonusActivities, currentWeek] = await Promise.all([
         getUserProfile(user.id),
         getUserStats(user.id),
         getUserSubmissions(user.id),
-        getBonusActivities(true)
+        getBonusActivities(true),
+        getCurrentProgramWeek(),
     ])
-
-    const { weekNumber, year } = getCurrentWeek()
+    const { weekNumber, year } = currentWeek
     const currentWeekSubmissions = submissions.filter(
         s => s.weekNumber === weekNumber && s.year === year
     )

@@ -19,7 +19,8 @@ import {
     ChevronLeft,
     ChevronRight,
     Image,
-    ClipboardList
+    ClipboardList,
+    CalendarDays
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -41,6 +42,7 @@ const adminNavItems = [
     { name: 'Submissions', href: '/admin/submissions', icon: FileImage },
     { name: 'Media', href: '/admin/media', icon: Image },
     { name: 'Points', href: '/admin/points', icon: Calculator },
+    { name: 'Program Settings', href: '/admin/settings', icon: CalendarDays },
     { name: 'Audit Log', href: '/admin/audit', icon: FileText },
 ]
 
