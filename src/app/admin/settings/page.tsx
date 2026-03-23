@@ -20,9 +20,6 @@ export default async function ProgramSettingsPage() {
             <main className="p-6">
                 <div className="mb-6">
                     <h1 className="text-2xl font-bold">ACE Program Schedule</h1>
-                    <p className="text-muted-foreground">
-                        Only admins can change the program start date and the date used to count the current week number.
-                    </p>
                 </div>
 
                 <ProgramSettingsForm settings={settings} currentWeek={currentWeek} />

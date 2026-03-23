@@ -96,16 +96,6 @@ export default function ProgramSettingsForm({ settings, currentWeek }: ProgramSe
                             </div>
                         </div>
 
-                        <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
-                            <div className="flex items-center gap-2 font-medium">
-                                <ShieldCheck className="w-4 h-4 text-primary" />
-                                Admin-only change
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                                Only admins can access this page and only admins can update these settings.
-                            </p>
-                        </div>
-
                         <div className="grid gap-4 md:grid-cols-2">
                             <div className="rounded-lg border p-4">
                                 <div className="text-sm text-muted-foreground mb-1">Current saved week</div>
