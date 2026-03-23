@@ -282,15 +282,25 @@ function getSubmissionDocId(pairingId: string, year: number, weekNumber: number)
     return `${pairingId}_${year}_${weekNumber}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 }
 
-export async function submitPhotoSubmission(
-    file: File,
-    weekNumber: number,
-    year: number,
-    bonusActivityIds: string[]
-): Promise<SubmissionResult> {
+export async function submitPhotoSubmission(formData: FormData): Promise<SubmissionResult> {
     const user = await getAuthenticatedUser()
     if (!user) {
         return { success: false, error: 'You must be logged in to submit' }
+    }
+
+    const file = formData.get('file')
+    if (!(file instanceof File)) {
+        return { success: false, error: 'Please choose a photo to upload.' }
+    }
+
+    const weekNumberValue = formData.get('weekNumber')
+    const yearValue = formData.get('year')
+    const weekNumber = Number(weekNumberValue)
+    const year = Number(yearValue)
+    const bonusActivityIds = formData.getAll('bonusActivityIds').map((value) => String(value))
+
+    if (!Number.isInteger(weekNumber) || !Number.isInteger(year)) {
+        return { success: false, error: 'Invalid submission details. Please try again.' }
     }
 
     const contentType = getSubmissionContentType(file)
