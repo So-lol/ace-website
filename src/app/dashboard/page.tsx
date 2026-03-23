@@ -188,7 +188,7 @@ export default async function DashboardPage() {
                                             </div>
                                             <h3 className="font-semibold mb-2">Time to Submit!</h3>
                                             <p className="text-sm text-muted-foreground mb-4">
-                                                Don&apos;t forget to submit your weekly photo with your Em(s).
+                                                Don&apos;t forget to submit your weekly photo with your pairings.
                                             </p>
                                             <Link href="/dashboard/submit">
                                                 <Button className="gap-2 doraemon-gradient text-white">
