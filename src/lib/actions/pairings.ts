@@ -22,6 +22,35 @@ export type PairingResult = {
     pairingId?: string
 }
 
+async function validatePairingParticipants(mentorId: string, menteeIds: string[]) {
+    const [mentorSnap, menteeSnaps] = await Promise.all([
+        adminDb.collection('users').doc(mentorId).get(),
+        Promise.all(menteeIds.map(id => adminDb.collection('users').doc(id).get()))
+    ])
+
+    if (!mentorSnap.exists) {
+        return 'Selected mentor was not found'
+    }
+
+    const mentor = mentorSnap.data() as UserDoc
+    if (mentor.role !== 'MENTOR' && mentor.role !== 'ADMIN') {
+        return 'Selected mentor must have role MENTOR or ADMIN'
+    }
+
+    for (const menteeSnap of menteeSnaps) {
+        if (!menteeSnap.exists) {
+            return 'One or more selected mentees were not found'
+        }
+
+        const mentee = menteeSnap.data() as UserDoc
+        if (mentee.role !== 'MENTEE') {
+            return 'Selected mentees must have role MENTEE'
+        }
+    }
+
+    return null
+}
+
 // Return type matching index.ts PairingFull (ish)
 // The page expects: family, mentor, mentees (User[] or equivalent), submissions (Submission[])
 
@@ -183,6 +212,11 @@ export async function createPairing(
     }
 
     try {
+        const validationError = await validatePairingParticipants(mentorId, menteeIds)
+        if (validationError) {
+            return { success: false, error: validationError }
+        }
+
         const newPairing: Omit<PairingDoc, 'id'> = {
             familyId,
             mentorId,
@@ -357,6 +391,11 @@ export async function updatePairing(
 
         const currentMenteeIds = currentData.menteeIds
         const newMenteeIds = data.menteeIds || currentMenteeIds
+
+        const validationError = await validatePairingParticipants(newMentorId, newMenteeIds)
+        if (validationError) {
+            return { success: false, error: validationError }
+        }
 
         // Prepare updates
         if (data.familyId) updates.familyId = data.familyId

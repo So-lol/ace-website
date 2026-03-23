@@ -61,10 +61,26 @@ export default async function DashboardPage() {
     const hasSubmittedThisWeek = currentWeekSubmissions.length > 0
 
     // Profile Fallbacks
-    const familyName = profile?.family?.name || 'No Family'
+    const familyName = profile?.family?.name || 'No Family Assigned'
     const familyRank = profile?.family?.rank || '-'
     const mentees = profile?.pairing?.mentees || []
-    const menteeNames = mentees.length > 0 ? mentees.join(' & ') : 'No Mentees'
+    const menteeNames = mentees.length > 0 ? mentees.join(' & ') : 'No Mentees Assigned'
+    const dashboardRoleLabel = profile?.dashboardRoleLabel || (user.role === 'MENTOR' ? 'Mentor' : 'Mentee')
+    const isMentorView = dashboardRoleLabel === 'Mentor'
+    const pairingMentorName = isMentorView
+        ? user.name
+        : (profile?.pairing?.mentorName || 'No Mentor Assigned')
+    const pairingMenteeLabel = dashboardRoleLabel === 'Family Head'
+        ? 'Pairing Status'
+        : (mentees.length > 1 ? 'Mentees' : 'Mentee')
+    const pairingMenteeValue = isMentorView
+        ? menteeNames
+        : (
+            mentees.length > 0
+                ? mentees.join(' & ')
+                : (dashboardRoleLabel === 'Family Head' ? 'Family heads are not assigned a mentor/mentee pairing.' : 'No Pairing Assigned')
+        )
+    const pairingMentorLabel = isMentorView ? 'Mentor (You)' : 'Mentor'
 
     return (
         <div className="min-h-screen flex flex-col">
@@ -79,7 +95,7 @@ export default async function DashboardPage() {
                                 Welcome back, {user.name.split(' ')[0]}! 👋
                             </h1>
                             <p className="text-muted-foreground">
-                                {user.role === 'MENTOR' ? 'Anh/Chị' : 'Em'} • {familyName}
+                                {dashboardRoleLabel} • {familyName}
                             </p>
                         </div>
                     </div>
@@ -204,15 +220,15 @@ export default async function DashboardPage() {
                                 <CardContent>
                                     <div className="space-y-4">
                                         <div>
-                                            <div className="text-sm text-muted-foreground mb-1">Mentor (You)</div>
-                                            <div className="font-medium">{user.role === 'MENTOR' ? user.name : (profile?.pairing?.mentorName || 'Unknown')}</div>
+                                            <div className="text-sm text-muted-foreground mb-1">{pairingMentorLabel}</div>
+                                            <div className="font-medium">{pairingMentorName}</div>
                                         </div>
                                         <div>
                                             <div className="text-sm text-muted-foreground mb-1">
-                                                {mentees.length > 1 ? 'Mentees' : 'Mentee'}
+                                                {pairingMenteeLabel}
                                             </div>
                                             <div className="font-medium">
-                                                {menteeNames}
+                                                {pairingMenteeValue}
                                             </div>
                                         </div>
                                         <div>
