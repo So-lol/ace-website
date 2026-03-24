@@ -76,25 +76,7 @@ export function getFileExtensionFromPath(path: string, fallback = 'jpg') {
     return normalized || fallback
 }
 
-export function inferMediaMimeType(path: string) {
-    switch (getFileExtensionFromPath(path)) {
-        case 'jpg':
-        case 'jpeg':
-            return 'image/jpeg'
-        case 'png':
-            return 'image/png'
-        case 'webp':
-            return 'image/webp'
-        case 'heic':
-            return 'image/heic'
-        case 'heif':
-            return 'image/heif'
-        default:
-            return 'application/octet-stream'
-    }
-}
-
-export function buildMediaDriveFileName(item: Pick<MediaSyncCandidate, 'id' | 'submitterName' | 'weekNumber' | 'year' | 'status' | 'imagePath'>) {
+export function buildMediaExportFileName(item: Pick<MediaSyncCandidate, 'id' | 'submitterName' | 'weekNumber' | 'year' | 'status' | 'imagePath'>) {
     const safeSubmitter = sanitizeDriveFileNameSegment(item.submitterName)
     const extension = getFileExtensionFromPath(item.imagePath)
     const paddedWeek = String(item.weekNumber).padStart(2, '0')

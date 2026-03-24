@@ -27,8 +27,6 @@ npm run dev:emulators
 
 Copy `.env.example` to `.env.local` and fill in the Firebase web-app and Admin SDK credentials.
 
-To enable the `/admin/media` Google Drive sync, also set `GOOGLE_DRIVE_MEDIA_FOLDER_ID`, enable the Google Drive API for the backing Google Cloud project, and share that Drive folder with the service account the app will use. By default the feature reuses the Firebase Admin service account; you can override it with the optional `GOOGLE_DRIVE_*` service-account variables in `.env.example`.
-
 ## Verification commands
 
 Repo quality gate:

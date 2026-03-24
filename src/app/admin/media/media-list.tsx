@@ -35,19 +35,17 @@ import {
     Clock,
     XCircle,
     ShieldCheck,
-    Upload,
-    ExternalLink
+    Download
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
     archiveMedia,
     restoreMedia,
     deleteArchivedMedia,
-    type MediaDistributionOverview,
-    type MediaGoogleDriveSyncResult,
+    exportMediaStorageLinks,
+    type MediaStorageLinkExportResult,
     type MediaStorageAuditReport,
     reconcileMediaStorage,
-    syncMediaToGoogleDrive,
 } from '@/lib/actions/media'
 import {
     MEDIA_SYNC_SCOPE_OPTIONS,
@@ -85,10 +83,9 @@ interface MediaStats {
 interface MediaListProps {
     media: MediaItem[]
     stats: MediaStats
-    distribution: MediaDistributionOverview
 }
 
-export default function MediaList({ media, stats, distribution }: MediaListProps) {
+export default function MediaList({ media, stats }: MediaListProps) {
     const router = useRouter()
     const [filter, setFilter] = useState<string>('all')
     const [syncScope, setSyncScope] = useState<MediaSyncScope>('approved-active')
@@ -97,8 +94,7 @@ export default function MediaList({ media, stats, distribution }: MediaListProps
     const [selectedImage, setSelectedImage] = useState<MediaItem | null>(null)
     const [confirmDelete, setConfirmDelete] = useState<MediaItem | null>(null)
     const [reconciliationReport, setReconciliationReport] = useState<MediaStorageAuditReport | null>(null)
-    const [syncResult, setSyncResult] = useState<MediaGoogleDriveSyncResult | null>(null)
-    const driveDestination = distribution.googleDrive
+    const [storageExportResult, setStorageExportResult] = useState<MediaStorageLinkExportResult | null>(null)
 
     const filteredMedia = media.filter(item => {
         // Apply filter
@@ -114,6 +110,16 @@ export default function MediaList({ media, stats, distribution }: MediaListProps
     })
 
     const syncScopeCount = media.filter((item) => mediaMatchesSyncScope(item, syncScope)).length
+
+    const downloadTextFile = (content: string, filename: string) => {
+        const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = filename
+        link.click()
+        URL.revokeObjectURL(url)
+    }
 
     const handleArchive = async (item: MediaItem) => {
         setIsLoading(item.id)
@@ -168,26 +174,26 @@ export default function MediaList({ media, stats, distribution }: MediaListProps
         }
     }
 
-    const handleGoogleDriveSync = async () => {
-        setIsLoading('drive-sync')
-        setSyncResult(null)
+    const handleStorageLinkExport = async () => {
+        setIsLoading('storage-export')
+        setStorageExportResult(null)
 
         try {
-            const result = await syncMediaToGoogleDrive(syncScope)
-            setSyncResult(result)
+            const result = await exportMediaStorageLinks(syncScope)
+            setStorageExportResult(result)
 
-            if (!result.success) {
-                toast.error(result.error || 'Failed to sync media to Google Drive')
+            if (!result.success || !result.data || !result.fileName) {
+                toast.error(result.error || 'Failed to export Firebase Storage links')
                 return
             }
 
-            if (result.partialFailure) {
-                toast.error(`Synced ${result.summary?.created || 0} new and ${result.summary?.updated || 0} existing files. ${result.summary?.failed || 0} failed.`)
-            } else {
-                toast.success(`Google Drive sync complete for ${result.summary?.totalCandidates || 0} submissions`)
-            }
+            downloadTextFile(result.data, result.fileName)
 
-            router.refresh()
+            if (result.partialFailure) {
+                toast.error(`Downloaded ${result.summary?.exported || 0} Firebase Storage links. ${result.summary?.failed || 0} failed.`)
+            } else {
+                toast.success(`Downloaded ${result.summary?.exported || 0} Firebase Storage links`)
+            }
         } catch {
             toast.error('An error occurred')
         } finally {
@@ -270,65 +276,24 @@ export default function MediaList({ media, stats, distribution }: MediaListProps
 
             <Card className="border-dashed">
                 <CardHeader className="gap-4">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                        <div className="space-y-2">
-                            <div className="flex flex-wrap items-center gap-2">
-                                <CardTitle>Google Drive Distribution</CardTitle>
-                                {driveDestination.configured ? (
-                                    <Badge className="bg-green-600">Configured</Badge>
-                                ) : (
-                                    <Badge variant="destructive">Needs Setup</Badge>
-                                )}
-                                {driveDestination.credentialSource && (
-                                    <Badge variant="outline">
-                                        {driveDestination.credentialSource === 'google-drive'
-                                            ? 'Dedicated Drive credentials'
-                                            : 'Using Firebase Admin credentials'}
-                                    </Badge>
-                                )}
-                            </div>
-                            <CardDescription>
-                                Push submitted photos into the shared Google Drive folder your multimedia team uses.
-                                The recommended scope is approved active submissions only.
-                            </CardDescription>
-                        </div>
-
-                        {driveDestination.folderUrl && (
-                            <Button asChild variant="outline" className="gap-2 self-start">
-                                <a href={driveDestination.folderUrl} target="_blank" rel="noreferrer">
-                                    <ExternalLink className="w-4 h-4" />
-                                    Open Drive Folder
-                                </a>
-                            </Button>
-                        )}
+                    <div className="space-y-2">
+                        <CardTitle>Media Distribution</CardTitle>
+                        <CardDescription>
+                            Export Firebase Storage links for the multimedia team. The recommended scope is approved active submissions only.
+                        </CardDescription>
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    <div className="rounded-lg border bg-muted/30 p-4 text-sm space-y-2">
-                        {driveDestination.configured ? (
-                            <>
-                                <div>
-                                    Share the destination Drive folder with{' '}
-                                    <span className="font-medium">{driveDestination.serviceAccountEmail || 'the configured service account'}</span>{' '}
-                                    as an Editor or Content manager so uploads can succeed.
-                                </div>
-                                <div className="text-muted-foreground break-all">
-                                    Folder ID: {driveDestination.folderId}
-                                </div>
-                                <div className="text-muted-foreground">
-                                    If the first sync fails immediately, confirm the Google Drive API is enabled for the service account&apos;s project.
-                                </div>
-                            </>
-                        ) : (
-                            <div className="text-red-600">
-                                {driveDestination.configurationError}
-                            </div>
-                        )}
+                    <div className="rounded-lg border bg-blue-50/40 p-4 text-sm space-y-2">
+                        <div className="font-medium text-blue-950">Firebase Storage Distribution</div>
+                        <div className="text-blue-950/80">
+                            Download a CSV of signed Firebase Storage links for the selected scope. These links expire after 7 days.
+                        </div>
                     </div>
 
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
                         <div className="space-y-2">
-                            <div className="text-sm font-medium">Sync scope</div>
+                            <div className="text-sm font-medium">Distribution scope</div>
                             <Select value={syncScope} onValueChange={(value) => setSyncScope(value as MediaSyncScope)}>
                                 <SelectTrigger className="w-full min-w-72">
                                     <SelectValue placeholder="Choose what to sync" />
@@ -348,65 +313,46 @@ export default function MediaList({ media, stats, distribution }: MediaListProps
 
                         <Button
                             type="button"
+                            variant="outline"
                             className="gap-2"
-                            onClick={handleGoogleDriveSync}
-                            disabled={!driveDestination.configured || isLoading === 'drive-sync'}
+                            onClick={handleStorageLinkExport}
+                            disabled={isLoading === 'storage-export'}
                         >
-                            {isLoading === 'drive-sync' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                            Sync To Google Drive
+                            {isLoading === 'storage-export' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                            Export Storage Links CSV
                         </Button>
                     </div>
 
-                    {syncResult?.summary && (
-                        <div className={`rounded-lg border p-4 space-y-3 ${syncResult.partialFailure ? 'border-amber-300 bg-amber-50/50' : 'border-green-200 bg-green-50/40'}`}>
+                    {storageExportResult?.summary && (
+                        <div className={`rounded-lg border p-4 space-y-3 ${storageExportResult.partialFailure ? 'border-amber-300 bg-amber-50/50' : 'border-blue-200 bg-blue-50/40'}`}>
                             <div className="flex flex-wrap items-center justify-between gap-3">
                                 <div>
                                     <div className="font-semibold">
-                                        {syncResult.partialFailure ? 'Sync completed with issues' : 'Sync completed'}
+                                        {storageExportResult.partialFailure ? 'Storage link export completed with issues' : 'Storage link export completed'}
                                     </div>
                                     <div className="text-sm text-muted-foreground">
-                                        {syncResult.folderName ? `${syncResult.folderName} • ` : ''}
-                                        {syncResult.summary.totalCandidates} submission{syncResult.summary.totalCandidates === 1 ? '' : 's'} considered
+                                        {storageExportResult.summary.totalCandidates} submission{storageExportResult.summary.totalCandidates === 1 ? '' : 's'} considered
                                     </div>
                                 </div>
-                                <Badge variant={syncResult.partialFailure ? 'secondary' : 'default'}>
-                                    {syncResult.partialFailure ? `${syncResult.summary.failed} failed` : 'Healthy'}
+                                <Badge variant={storageExportResult.partialFailure ? 'secondary' : 'default'}>
+                                    {storageExportResult.partialFailure ? `${storageExportResult.summary.failed} failed` : 'Healthy'}
                                 </Badge>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 text-sm">
+                            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 text-sm">
                                 <div>
-                                    <div className="font-semibold">{syncResult.summary.created}</div>
-                                    <div className="text-muted-foreground">Created</div>
+                                    <div className="font-semibold">{storageExportResult.summary.exported}</div>
+                                    <div className="text-muted-foreground">Exported</div>
                                 </div>
                                 <div>
-                                    <div className="font-semibold">{syncResult.summary.updated}</div>
-                                    <div className="text-muted-foreground">Updated</div>
-                                </div>
-                                <div>
-                                    <div className="font-semibold">{syncResult.summary.skipped}</div>
-                                    <div className="text-muted-foreground">Skipped</div>
-                                </div>
-                                <div>
-                                    <div className="font-semibold">{syncResult.summary.failed}</div>
+                                    <div className="font-semibold">{storageExportResult.summary.failed}</div>
                                     <div className="text-muted-foreground">Failed</div>
                                 </div>
-                            </div>
-
-                            {syncResult.failures && syncResult.failures.length > 0 && (
-                                <div className="space-y-2">
-                                    <div className="text-sm font-medium">Failures</div>
-                                    <div className="space-y-2">
-                                        {syncResult.failures.slice(0, 5).map((failure) => (
-                                            <div key={`${failure.submissionId}-${failure.fileName}`} className="rounded-md border bg-background p-2 text-sm">
-                                                <div className="font-medium">{failure.fileName}</div>
-                                                <div className="text-muted-foreground">Submission: {failure.submissionId}</div>
-                                                <div className="text-red-600">{failure.error}</div>
-                                            </div>
-                                        ))}
-                                    </div>
+                                <div>
+                                    <div className="font-semibold">{new Date(storageExportResult.summary.expiresAt).toLocaleDateString('en-US')}</div>
+                                    <div className="text-muted-foreground">Links expire</div>
                                 </div>
-                            )}
+                            </div>
                         </div>
                     )}
                 </CardContent>
