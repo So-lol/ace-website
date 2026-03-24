@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "eslint .",
     "ops:auth-report": "node --import tsx scripts/report-auth-failures.ts",
+    "ops:drive-upload-storage-links": "node --import tsx scripts/upload-storage-links-to-drive.ts",
     "test:unit": "node --import tsx --test tests/unit/**/*.test.ts",
     "test:smoke": "npx playwright test tests/auth-smoke.spec.ts",
     "validate:firebase": "node --import tsx scripts/verify-firebase.ts",
