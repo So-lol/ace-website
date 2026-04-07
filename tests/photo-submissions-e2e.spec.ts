@@ -411,6 +411,73 @@ test.describe.serial('photo submissions e2e audit', () => {
         }
     })
 
+    test('admin can approve all pending submissions and users can see both photos were approved', async ({ browser, request }) => {
+        const { admin, mentor, pairingId, familyId } = await seedPhotoSubmissionFixture(request)
+
+        const participantContext = await browser.newContext()
+        const adminContext = await browser.newContext()
+        const participantPage = await participantContext.newPage()
+        const adminPage = await adminContext.newPage()
+
+        try {
+            await login(participantPage, mentor.email, mentor.password)
+            await participantPage.goto('/dashboard/submit', { waitUntil: 'domcontentloaded' })
+            await participantPage.locator('[data-testid="submission-file-input"]').setInputFiles(FIXTURE_IMAGE)
+            await expect(participantPage.getByRole('button', { name: 'Submit Photo' })).toBeEnabled()
+            await selectBonusActivity(participantPage, 'Coffee Date')
+            await participantPage.getByRole('button', { name: 'Submit Photo' }).click()
+            await expect(participantPage).toHaveURL(/\/dashboard\/submissions/, { timeout: 20_000 })
+
+            await participantPage.goto('/dashboard/submit', { waitUntil: 'domcontentloaded' })
+            await participantPage.locator('[data-testid="submission-file-input"]').setInputFiles([
+                {
+                    name: 'test-upload-second.png',
+                    mimeType: 'image/png',
+                    buffer: FIXTURE_IMAGE_BUFFER,
+                }
+            ])
+            await expect(participantPage.getByRole('button', { name: 'Submit Photo' })).toBeEnabled()
+            await participantPage.getByRole('button', { name: 'Submit Photo' }).click()
+            await expect(participantPage).toHaveURL(/\/dashboard\/submissions/, { timeout: 20_000 })
+            await expect(participantPage.getByText('Pending Review')).toHaveCount(2)
+
+            await login(adminPage, admin.email, admin.password)
+            await adminPage.goto('/admin/submissions', { waitUntil: 'domcontentloaded' })
+            await expect(adminPage.getByRole('heading', { name: 'Review Submissions' })).toBeVisible()
+            await adminPage.getByRole('button', { name: /Approve All Pending \(2\)/ }).click()
+
+            await expect.poll(async () => {
+                const submissionsSnapshot = await adminDb.collection('submissions').get()
+                return submissionsSnapshot.docs.filter((doc) => doc.data().status === 'APPROVED').length
+            }, { timeout: 20_000 }).toBe(2)
+
+            await adminPage.reload({ waitUntil: 'domcontentloaded' })
+            await expect(adminPage.getByRole('tab', { name: /Pending \(0\)/ })).toBeVisible()
+            await expect(adminPage.getByRole('tab', { name: /Approved \(2\)/ })).toBeVisible()
+            await expect(adminPage.getByRole('button', { name: /Approve All Pending \(0\)/ })).toBeDisabled()
+
+            await participantPage.reload({ waitUntil: 'domcontentloaded' })
+            await expect(participantPage.getByText('This photo submission is approved and included in your points total.')).toHaveCount(2)
+            await expect(participantPage.getByText('+5 pts')).toBeVisible()
+            await expect(participantPage.getByText('+0 pts')).toBeVisible()
+
+            const submissionsSnapshot = await adminDb.collection('submissions').get()
+            expect(submissionsSnapshot.docs).toHaveLength(2)
+            expect(submissionsSnapshot.docs.every((doc) => doc.data().status === 'APPROVED')).toBeTruthy()
+
+            const pairing = await getDoc('pairings', pairingId)
+            const family = await getDoc('families', familyId)
+
+            expect(pairing.totalPoints).toBe(5)
+            expect(pairing.weeklyPoints).toBe(5)
+            expect(family.totalPoints).toBe(5)
+            expect(family.weeklyPoints).toBe(5)
+        } finally {
+            await participantContext.close().catch(() => {})
+            await adminContext.close().catch(() => {})
+        }
+    })
+
     test('family head can submit a photo and approval credits the family without touching pairing points', async ({ browser, request }) => {
         const { admin, familyHead, pairingId, familyId } = await seedPhotoSubmissionFixture(request)
 

@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
     Search,
     CheckCircle2,
+    CheckCheck,
     XCircle,
     Clock,
     Eye,
@@ -25,7 +26,7 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { AdminSubmissionListItem, approveSubmission, rejectSubmission } from '@/lib/actions/submissions'
+import { AdminSubmissionListItem, approveAllSubmissions, approveSubmission, rejectSubmission } from '@/lib/actions/submissions'
 import { toast } from 'sonner'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
@@ -50,7 +51,9 @@ export default function SubmissionList({ submissions }: SubmissionListProps) {
     const [rejectDialogOpen, setRejectDialogOpen] = useState(false)
     const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null)
     const [rejectReason, setRejectReason] = useState('')
-    const [isProcessing, setIsProcessing] = useState(false)
+    const [processingSubmissionId, setProcessingSubmissionId] = useState<string | null>(null)
+    const [isRejecting, setIsRejecting] = useState(false)
+    const [isApprovingAll, setIsApprovingAll] = useState(false)
     const [viewImageOpen, setViewImageOpen] = useState(false)
     const [viewedSubmission, setViewedSubmission] = useState<AdminSubmissionListItem | null>(null)
 
@@ -64,9 +67,10 @@ export default function SubmissionList({ submissions }: SubmissionListProps) {
     const pendingCount = submissions.filter(s => s.status === 'PENDING').length
     const approvedCount = submissions.filter(s => s.status === 'APPROVED').length
     const rejectedCount = submissions.filter(s => s.status === 'REJECTED').length
+    const isBusy = Boolean(processingSubmissionId) || isRejecting || isApprovingAll
 
     const handleApprove = async (id: string) => {
-        setIsProcessing(true)
+        setProcessingSubmissionId(id)
         try {
             const result = await approveSubmission(id)
             if (result.success) {
@@ -78,7 +82,38 @@ export default function SubmissionList({ submissions }: SubmissionListProps) {
         } catch {
             toast.error('An error occurred')
         } finally {
-            setIsProcessing(false)
+            setProcessingSubmissionId(null)
+        }
+    }
+
+    const handleApproveAll = async () => {
+        if (pendingCount === 0) return
+
+        setIsApprovingAll(true)
+        try {
+            const result = await approveAllSubmissions()
+
+            if (result.success) {
+                if (result.approvedCount === 0) {
+                    toast.warning('No pending submissions were available to approve')
+                } else {
+                    toast.success(`Approved ${result.approvedCount} submission${result.approvedCount === 1 ? '' : 's'}`)
+                }
+                router.refresh()
+                return
+            }
+
+            if (result.approvedCount > 0) {
+                toast.warning(result.error || `Approved ${result.approvedCount} submissions with some failures`)
+                router.refresh()
+                return
+            }
+
+            toast.error(result.error || 'Failed to approve all submissions')
+        } catch {
+            toast.error('An error occurred')
+        } finally {
+            setIsApprovingAll(false)
         }
     }
 
@@ -92,7 +127,7 @@ export default function SubmissionList({ submissions }: SubmissionListProps) {
         e.preventDefault()
         if (!selectedSubmissionId) return
 
-        setIsProcessing(true)
+        setIsRejecting(true)
         try {
             const result = await rejectSubmission(selectedSubmissionId, rejectReason)
             if (result.success) {
@@ -105,7 +140,7 @@ export default function SubmissionList({ submissions }: SubmissionListProps) {
         } catch {
             toast.error('An error occurred')
         } finally {
-            setIsProcessing(false)
+            setIsRejecting(false)
         }
     }
 
@@ -206,7 +241,7 @@ export default function SubmissionList({ submissions }: SubmissionListProps) {
                                     variant="destructive"
                                     className="gap-1"
                                     onClick={() => openRejectDialog(submission.id)}
-                                    disabled={isProcessing}
+                                    disabled={isBusy}
                                 >
                                     <XCircle className="w-4 h-4" />
                                     Reject
@@ -215,9 +250,9 @@ export default function SubmissionList({ submissions }: SubmissionListProps) {
                                     size="sm"
                                     className="gap-1 bg-green-600 hover:bg-green-700"
                                     onClick={() => handleApprove(submission.id)}
-                                    disabled={isProcessing}
+                                    disabled={isBusy}
                                 >
-                                    {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                                    {processingSubmissionId === submission.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
                                     Approve
                                 </Button>
                             </div>
@@ -256,6 +291,14 @@ export default function SubmissionList({ submissions }: SubmissionListProps) {
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
                 </div>
+                <Button
+                    className="gap-2 bg-green-600 hover:bg-green-700"
+                    onClick={handleApproveAll}
+                    disabled={pendingCount === 0 || isBusy}
+                >
+                    {isApprovingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCheck className="w-4 h-4" />}
+                    Approve All Pending ({pendingCount})
+                </Button>
                 {/* 
                 <Button variant="outline" className="gap-2">
                     <Filter className="w-4 h-4" />
@@ -344,8 +387,8 @@ export default function SubmissionList({ submissions }: SubmissionListProps) {
                             <Button type="button" variant="outline" onClick={() => setRejectDialogOpen(false)}>
                                 Cancel
                             </Button>
-                            <Button type="submit" variant="destructive" disabled={isProcessing}>
-                                {isProcessing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                            <Button type="submit" variant="destructive" disabled={isBusy}>
+                                {isRejecting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                                 Reject Submission
                             </Button>
                         </DialogFooter>

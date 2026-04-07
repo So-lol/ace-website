@@ -170,8 +170,11 @@ export default async function SubmissionsPage() {
                                         )}
 
                                         {submission.status === 'APPROVED' && (
-                                            <div className="text-sm text-muted-foreground mb-3">
-                                                Bonus total: <span className="text-[#FFD700]">{submission.bonusPoints} pts</span>
+                                            <div className="mb-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800 dark:border-green-900 dark:bg-green-950/40 dark:text-green-100">
+                                                This photo submission is approved and included in your points total.
+                                                <span className="ml-1 text-[#B8860B] dark:text-[#FFD700]">
+                                                    Bonus total: {submission.bonusPoints} pts
+                                                </span>
                                             </div>
                                         )}
 
@@ -184,7 +187,7 @@ export default async function SubmissionsPage() {
 
                                         {submission.reviewedAt && (
                                             <div className="text-xs text-muted-foreground mt-3">
-                                                Reviewed {formatDate(submission.reviewedAt)}
+                                                {submission.status === 'APPROVED' ? 'Approved' : submission.status === 'REJECTED' ? 'Rejected' : 'Reviewed'} {formatDate(submission.reviewedAt)}
                                             </div>
                                         )}
                                     </div>

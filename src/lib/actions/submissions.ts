@@ -20,9 +20,17 @@ export type SubmissionResult = {
     submissionId?: string
 }
 
+export type BulkApproveSubmissionsResult = {
+    success: boolean
+    approvedCount: number
+    failedCount: number
+    error?: string
+}
+
 type SubmissionUploadState = 'UPLOADING' | 'UPLOADED' | 'FAILED'
 
 type StoredDocumentData = Record<string, unknown>
+type AdminActor = Awaited<ReturnType<typeof requireAdmin>>
 
 export interface AdminSubmissionListItem {
     id: string
@@ -593,17 +601,20 @@ export async function deleteUploadedImage(imagePath: string): Promise<void> {
     }
 }
 
-/**
- * Approve a submission (admin only)
- */
-export async function approveSubmission(submissionId: string): Promise<SubmissionResult> {
-    let adminUser
-    try {
-        adminUser = await requireAdmin()
-    } catch {
-        return { success: false, error: 'Only admins can approve submissions' }
-    }
+function revalidateSubmissionViews() {
+    revalidatePath('/admin')
+    revalidatePath('/admin/submissions')
+    revalidatePath('/admin/media')
+    revalidatePath('/dashboard')
+    revalidatePath('/dashboard/submissions')
+    revalidatePath('/leaderboard')
+}
 
+async function approveSubmissionWithAdmin(
+    submissionId: string,
+    adminUser: AdminActor,
+    { revalidate = true }: { revalidate?: boolean } = {}
+): Promise<SubmissionResult> {
     try {
         await adminDb.runTransaction(async (transaction) => {
             const submissionRef = adminDb.collection('submissions').doc(submissionId)
@@ -643,29 +654,29 @@ export async function approveSubmission(submissionId: string): Promise<Submissio
                 throw new Error('Family not found for submission pairing')
             }
 
-            // Firestore transactions require all reads to happen before writes.
+            const reviewedAt = Timestamp.now()
+
             transaction.update(submissionRef, {
                 status: 'APPROVED',
                 reviewerId: adminUser.id,
-                reviewedAt: Timestamp.now(),
-                updatedAt: Timestamp.now(),
+                reviewedAt,
+                updatedAt: reviewedAt,
             })
 
             if (pairingRef) {
                 transaction.update(pairingRef, {
                     weeklyPoints: FieldValue.increment(submissionData.totalPoints),
                     totalPoints: FieldValue.increment(submissionData.totalPoints),
-                    updatedAt: Timestamp.now(),
+                    updatedAt: reviewedAt,
                 })
             }
 
             transaction.update(familyRef, {
                 weeklyPoints: FieldValue.increment(submissionData.totalPoints),
                 totalPoints: FieldValue.increment(submissionData.totalPoints),
-                updatedAt: Timestamp.now(),
+                updatedAt: reviewedAt,
             })
 
-            // Audit Log
             const auditRef = adminDb.collection('audit_logs').doc()
             transaction.set(auditRef, {
                 action: 'APPROVE',
@@ -675,21 +686,101 @@ export async function approveSubmission(submissionId: string): Promise<Submissio
                 actorEmail: adminUser.email,
                 details: 'Approved submission',
                 metadata: { status: 'APPROVED', points: submissionData.totalPoints },
-                timestamp: Timestamp.now(),
+                timestamp: reviewedAt,
             })
         })
 
-        revalidatePath('/admin')
-        revalidatePath('/admin/submissions')
-        revalidatePath('/admin/media')
-        revalidatePath('/dashboard')
-        revalidatePath('/dashboard/submissions')
-        revalidatePath('/leaderboard')
+        if (revalidate) {
+            revalidateSubmissionViews()
+        }
 
         return { success: true, submissionId }
     } catch (error: unknown) {
         console.error('Approval error:', error)
         return { success: false, error: getErrorMessage(error, 'Failed to approve submission') }
+    }
+}
+
+/**
+ * Approve a submission (admin only)
+ */
+export async function approveSubmission(submissionId: string): Promise<SubmissionResult> {
+    let adminUser
+    try {
+        adminUser = await requireAdmin()
+    } catch {
+        return { success: false, error: 'Only admins can approve submissions' }
+    }
+
+    return approveSubmissionWithAdmin(submissionId, adminUser)
+}
+
+/**
+ * Approve every pending uploaded submission (admin only)
+ */
+export async function approveAllSubmissions(): Promise<BulkApproveSubmissionsResult> {
+    let adminUser
+    try {
+        adminUser = await requireAdmin()
+    } catch {
+        return {
+            success: false,
+            approvedCount: 0,
+            failedCount: 0,
+            error: 'Only admins can approve submissions',
+        }
+    }
+
+    try {
+        const snapshot = await adminDb.collection('submissions')
+            .where('status', '==', 'PENDING')
+            .orderBy('createdAt', 'desc')
+            .get()
+
+        const pendingSubmissionIds = snapshot.docs
+            .filter((doc) => (doc.data().uploadState || 'UPLOADED') === 'UPLOADED')
+            .map((doc) => doc.id)
+
+        if (pendingSubmissionIds.length === 0) {
+            return {
+                success: true,
+                approvedCount: 0,
+                failedCount: 0,
+            }
+        }
+
+        let approvedCount = 0
+        let failedCount = 0
+
+        for (const submissionId of pendingSubmissionIds) {
+            const result = await approveSubmissionWithAdmin(submissionId, adminUser, { revalidate: false })
+            if (result.success) {
+                approvedCount += 1
+            } else {
+                failedCount += 1
+            }
+        }
+
+        if (approvedCount > 0) {
+            revalidateSubmissionViews()
+        }
+
+        return {
+            success: failedCount === 0,
+            approvedCount,
+            failedCount,
+            error: failedCount > 0
+                ? `Approved ${approvedCount} submission${approvedCount === 1 ? '' : 's'}, but ${failedCount} failed.`
+                : undefined,
+        }
+    } catch (error: unknown) {
+        console.error('Bulk approval error:', error)
+        return {
+            success: false,
+            approvedCount: 0,
+            failedCount: 0,
+            error: getErrorMessage(error, 'Failed to approve all submissions'),
+        }
     }
 }
 
